@@ -351,7 +351,7 @@ const CATS = {
   focus: { label: 'Focus', re: /study|homework|write|focus|admin|email|edit|plan|research|class prep|budget|work/i },
   together: { label: 'Together', re: /together|date|zachary|couple|family|friends/i },
   sleep: { label: 'Sleep', re: /sleep|bed/i },
-  appointments: { label: 'Appointments', re: /appt|appointment|doctor|meeting|call|interview|client|massage|session|class|teach|dance|rehearsal/i },
+  appointments: { label: 'Appointments', re: /appt|appointment|doctor|dentist|therap|vet\b|haircut|meeting|call|interview|client|massage|session|class|teach|dance|rehearsal/i },
   travel: { label: 'Travel', re: /drive|commute|travel|bus|train to|flight|arrive/i },
   routine: { label: 'Daily routine', re: /dog|shower|chores|laundry|clean|groceries|errand|routine|care/i },
   other: { label: 'Other', re: /$^/ },
@@ -1100,15 +1100,16 @@ function wireTaskDnD() {
 }
 
 /* ---------- quick add ---------- */
+const cutAt = (s, l, frag) => { const i = l.indexOf(frag); return i < 0 ? s : (s.slice(0, i) + ' ' + s.slice(i + frag.length)).replace(/\b(on|for|this|next)\s*$/i, '').replace(/\s+(on|this|next)\s+(?=\S)/i, ' '); };
 function parseDateWord(s, base) {
   let m; const l = s.toLowerCase();
   if (/\btoday\b/.test(l)) return [todayISO(), s.replace(/\btoday\b/i, '')];
   if (/\btomorrow\b|\btmrw\b/.test(l)) return [addDays(base, 1), s.replace(/\btomorrow\b|\btmrw\b/i, '')];
   const wd = l.match(/\b(?:next |on )?(sun|mon|tue|wed|thu|fri|sat)[a-z]*\b/);
-  if (wd) { const tgt = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(wd[1]); let x = base; for (let i = 0; i < 7; i++) { if (dow(x) === tgt) break; x = addDays(x, 1); } return [x, s.replace(wd[0], '')]; }
+  if (wd) { const tgt = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(wd[1]); let x = base; for (let i = 0; i < 7; i++) { if (dow(x) === tgt) break; x = addDays(x, 1); } return [x, cutAt(s, l, wd[0])]; }
   if ((m = l.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.? (\d{1,2})\b/))) {
     const mo = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(m[1]) + 1; let y = +base.slice(0, 4);
-    let r = `${y}-${String(mo).padStart(2, '0')}-${String(+m[2]).padStart(2, '0')}`; if (r < addDays(todayISO(), -60)) r = `${y + 1}${r.slice(4)}`; return [r, s.replace(m[0], '')];
+    let r = `${y}-${String(mo).padStart(2, '0')}-${String(+m[2]).padStart(2, '0')}`; if (r < addDays(todayISO(), -60)) r = `${y + 1}${r.slice(4)}`; return [r, cutAt(s, l, m[0])];
   }
   if ((m = l.match(/\b(\d{1,2})\/(\d{1,2})\b/))) { const y = +base.slice(0, 4); return [`${y}-${String(+m[1]).padStart(2, '0')}-${String(+m[2]).padStart(2, '0')}`, s.replace(m[0], '')]; }
   return [null, s];
@@ -1144,7 +1145,7 @@ function quickAdd(text) {
   let [date, rest] = parseDateWord(text, R.date); date = date || R.date;
   const tm = parseTimes(rest);
   if (tm) {
-    const title = tm.rest.replace(/\s{2,}/g, ' ').replace(/^[\s,.-]+|[\s,.-]+$/g, '') || 'Untitled';
+    const title = tm.rest.replace(/\b(on|at|from|for)\s*$/i, '').replace(/\s{2,}/g, ' ').replace(/^[\s,.-]+|[\s,.-]+$/g, '').replace(/\s+(on|at|from|for)$/i, '') || 'Untitled';
     const cat = autoCat(title), kind = cat === 'appointments' ? 'fixed' : cat === 'travel' || cat === 'together' ? 'protected' : 'flexible';
     const b = { id: uid(), title: title[0].toUpperCase() + title.slice(1), date, start: tm.start, end: tm.end, kind, cat: 'auto', notes: '' };
     commit('blocks', 'add ' + b.title, bl => bl.push(b), { toast: `Added “${b.title}” ${fmtShort(date)} ${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)} (${KINDS[kind].split(' (')[0].toLowerCase()})` });
