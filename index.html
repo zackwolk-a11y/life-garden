@@ -1967,8 +1967,13 @@ function planActions(actions) {
 /* ----- the panel ----- */
 function openVoice(autoStart) {
   if (!sync.cfg && !localVoiceKey() && !localOpenAIKey()) return openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
-    <div class="mb small"><p>The voice assistant runs through your Google Sheet, so connect it first. Then add a Gemini key in the Sheet's script (Settings & backup → Voice assistant).</p><p class="muted">Until then you can still speak into the quick-add bar on Today — tap the microphone on the iPhone keyboard.</p></div>
-    <div class="mf"><button class="btn" data-act="close">Close</button><button class="btn primary" id="vGo">Settings</button></div>`, m => { $('#vGo', m).onclick = () => { closeModal(); go('backup'); }; });
+    <div class="mb small"><p>Voice needs a key on this device first. Paste a ChatGPT (OpenAI) key, which starts with <code>sk-</code>, and tap Save:</p>
+      <div class="row"><input id="oaKeyQuick" type="password" class="grow" placeholder="sk-…" autocomplete="off"><button class="btn primary" id="vSaveKey">Save</button></div>
+      <p class="muted">No key yet? Create one at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> and add a little credit under Billing. Prefer Gemini? Use Settings & backup → Voice assistant.</p></div>
+    <div class="mf"><button class="btn" data-act="close">Close</button><button class="btn" id="vGo">Settings</button></div>`, m => {
+      $('#vGo', m).onclick = () => { closeModal(); go('backup'); };
+      $('#vSaveKey', m).onclick = () => { const v = $('#oaKeyQuick', m).value.trim(); if (!/^sk-/.test(v)) return toast('That doesn’t look like an OpenAI key — it starts with sk-'); try { localStorage.setItem(OPENAI_LOCAL, v); } catch (e) { } commit('settings', 'voice provider', st => { st.voiceProvider = 'openai'; }, { render: false }); closeModal(); toast('ChatGPT key saved on this device'); openVoice(true); };
+    });
   openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="mb stack">
       <div class="vmic-wrap"><button class="vmic" id="vMic" aria-label="Start talking"><span>🎙</span></button><div class="vlevel"><i id="vLevel"></i></div></div>
