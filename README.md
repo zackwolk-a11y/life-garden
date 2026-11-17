@@ -15,5 +15,8 @@ Open the app → **Settings & backup → Connect a Google Sheet → First-time s
 2. On the iPhone, open the link in **Safari** → tap **Copy setup code** → Share ⬆ → **Add to Home Screen**.
 3. Open **Life Garden** from the Home Screen → Settings & backup → paste the code → **Connect** → **Use the Sheet's plan**.
 
+## Voice assistant
+Tap 🎙 on any screen and say what you want ("Move yoga to 4 tomorrow", "Dentist Tuesday at 10", "What's on Thursday?"). Proposed changes are shown for approval before anything is saved. It runs through the Sheet's script using a Gemini API key stored in the script's properties (Settings & backup → Voice assistant explains the 2-minute setup).
+
 ## Editing with Gemini
 Open the Sheet and use Gemini in the side panel, e.g. *"Add a fixed block on 2026-11-24 from 10:00 to 11:00 called Dentist"*. The **How to edit (for Gemini)** tab explains the columns. Changes appear in the app within about a minute, or when it's reopened.

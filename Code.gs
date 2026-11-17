@@ -7,6 +7,10 @@
  * 4. Deploy → New deployment → type "Web app" → Execute as: Me → Who has access: Anyone → Deploy.
  *    Copy the Web app URL into the Life Garden app (Settings & backup → Google Sheet).
  * After changing this code later, use Deploy → Manage deployments → Edit → Version: New version.
+ *
+ * Voice assistant (optional): get a Gemini API key at https://aistudio.google.com/apikey (same Google account),
+ * then in this Apps Script project: Project Settings (gear) → Script properties → Add script property
+ *   Property: GEMINI_API_KEY    Value: (paste the key)    → Save.  No redeploy needed.
  */
 const PASSCODE = 'CHANGE-ME-to-a-private-phrase';
 // Use a long phrase (4+ random words). After 10 wrong passcodes in 15 minutes the Sheet stops answering for 30 minutes.
@@ -78,6 +82,7 @@ function doGet(e) {
 function doPost(e) {
   let body; try { body = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
   const bad = checkKey_(body.k); if (bad) return out_({ ok: false, error: bad });
+  if (body.op === 'agent') return out_(agent_(body));
   const lock = LockService.getScriptLock(); lock.waitLock(25000);
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -173,4 +178,70 @@ function saveBackup_(data) {
   if (ex.hasNext()) ex.next().setContent(text); else folder.createFile(name, text, 'application/json');
   const files = []; const all = folder.getFiles(); while (all.hasNext()) files.push(all.next());
   files.sort((a, b) => b.getName() < a.getName() ? -1 : 1).slice(30).forEach(f => f.setTrashed(true)); // keep 30 days
+}
+
+/* ---------------- voice assistant (Gemini) ---------------- */
+const GEMINI_MODELS = ['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash'];
+const AGENT_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    heard: { type: 'STRING', description: 'What Jordan said, transcribed (or the typed text).' },
+    reply: { type: 'STRING', description: 'Short, warm spoken reply: one or two sentences.' },
+    actions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          type: { type: 'STRING', enum: ['add_block', 'update_block', 'delete_block', 'add_step', 'complete_step', 'add_money'] },
+          id: { type: 'STRING', description: 'Existing block or step id from the context. Never invent one.' },
+          title: { type: 'STRING' },
+          date: { type: 'STRING', description: 'YYYY-MM-DD' },
+          start: { type: 'STRING', description: '24-hour HH:MM' },
+          end: { type: 'STRING', description: '24-hour HH:MM, after start, same day (24:00 = midnight)' },
+          kind: { type: 'STRING', enum: ['flexible', 'fixed', 'protected'] },
+          done: { type: 'BOOLEAN' },
+          area: { type: 'STRING' },
+          money_type: { type: 'STRING', enum: ['income', 'expense'] },
+          amount: { type: 'NUMBER' },
+          settled: { type: 'BOOLEAN', description: 'true only if she says it was already paid or received' },
+        },
+        required: ['type'],
+      },
+    },
+  },
+  required: ['heard', 'reply', 'actions'],
+};
+const AGENT_RULES = [
+  'You are the voice assistant inside Jordan\'s Life Garden, her personal day planner. You help her change her plan by voice.',
+  'Use only the plan context provided. Dates are YYYY-MM-DD, times are 24-hour HH:MM in her local time zone.',
+  'Propose only the changes she actually asked for. Never invent ids: to change, move, finish or remove something, use the id of the matching item in the context. If several items could match or a needed detail is missing, ask one short question in reply and return no actions.',
+  'New blocks: default length 60 minutes; appointments, classes, shifts and anything with another person at a set time are "fixed"; travel, meals, sleep and couple time are "protected"; everything else is "flexible". Use the title she would write herself, without dates or times in it.',
+  'To move a block, use update_block with its id and the new date/start/end, keeping its length unless she says otherwise. "Mark X done" is update_block with done=true. To-dos without a time are add_step (date only if she gave a day).',
+  'Money: add_money only when she states an amount. It is an estimate unless she says it was already paid or received.',
+  'Questions about her plan ("what\'s on Thursday?") get a spoken answer and no actions.',
+  'Reply in one or two short, plain sentences suitable to be read aloud. Do not repeat every detail of the change; the app shows it on screen. Never give medical, legal or financial advice.',
+].join('\n');
+function agent_(body) {
+  const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return { ok: false, error: 'nokey' };
+  const parts = [];
+  if (body.audio && body.audio.data) parts.push({ inlineData: { mimeType: body.audio.mime || 'audio/wav', data: body.audio.data } });
+  parts.push({ text: 'Plan context (JSON):\n' + JSON.stringify(body.context || {}) + (body.text ? '\n\nJordan typed: ' + body.text : '\n\nJordan\'s request is in the audio.') });
+  const req = { systemInstruction: { parts: [{ text: AGENT_RULES }] }, contents: [{ role: 'user', parts }],
+    generationConfig: { responseMimeType: 'application/json', responseSchema: AGENT_SCHEMA, temperature: 0.2 } };
+  let last = '';
+  for (const m of GEMINI_MODELS) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
+      method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(req), muteHttpExceptions: true });
+    const code = r.getResponseCode(), txt = r.getContentText();
+    if (code === 404) { last = 'model ' + m + ' not found'; continue; }
+    if (code === 429) return { ok: false, error: 'rate' };
+    if (code === 400 && /API key/i.test(txt) || code === 401 || code === 403) return { ok: false, error: 'apikey' };
+    if (code !== 200) return { ok: false, error: 'gemini ' + code + ': ' + txt.slice(0, 200) };
+    try {
+      const j = JSON.parse(txt), t = j.candidates[0].content.parts.map(p => p.text || '').join('');
+      return { ok: true, model: m, agent: JSON.parse(t) };
+    } catch (e) { return { ok: false, error: 'Gemini answer could not be read' }; }
+  }
+  return { ok: false, error: last || 'no model available' };
 }

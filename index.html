@@ -275,6 +275,15 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 }
 @media (display-mode: standalone){ .hero{height:calc(130px + var(--sat))} .hero .sub{display:none} }
 .blk{touch-action:manipulation}
+#voiceFab{position:fixed;right:calc(1.2rem + var(--sar));bottom:calc(1.2rem + var(--sab));z-index:55;width:3.6rem;height:3.6rem;border-radius:50%;border:0;background:var(--accent);color:#1b120a;font-size:1.5rem;box-shadow:0 6px 20px rgba(0,0,0,.35);cursor:pointer}
+#voiceFab:active{transform:scale(.95)}
+@media (max-width:860px){#voiceFab{bottom:calc(4.9rem + var(--sab));right:calc(.9rem + var(--sar));width:3.3rem;height:3.3rem}}
+.vmic-wrap{display:flex;flex-direction:column;align-items:center;gap:.6rem;padding:.6rem 0}
+.vmic{width:5.5rem;height:5.5rem;border-radius:50%;border:3px solid var(--accent);background:var(--card2);font-size:2.2rem;cursor:pointer;transition:all .2s}
+.vmic.on{background:var(--accent);box-shadow:0 0 0 8px color-mix(in srgb,var(--accent) 25%,transparent);animation:vpulse 1.4s ease-in-out infinite}
+@keyframes vpulse{50%{box-shadow:0 0 0 16px color-mix(in srgb,var(--accent) 10%,transparent)}}
+.vlevel{width:9rem;height:.35rem;border-radius:9px;background:var(--bg2);overflow:hidden}.vlevel i{display:block;height:100%;width:0;background:var(--good);transition:width .08s}
+@media print{#voiceFab{display:none}}
 .blk.lifted{transform:scale(1.02);box-shadow:0 12px 30px rgba(0,0,0,.45);z-index:30}
 .blk .grip{height:14px}
 </style>
@@ -1612,6 +1621,7 @@ VIEWS.backup = () => {
   return `<div class="sec-head"><div><h2>Settings & backup</h2><p class="sans small">${sync.cfg ? 'Synced with your Google Sheet — every phone connected to it, and Gemini in Sheets, works on the same plan.' : 'Saving on this device only. Connect a Google Sheet to share the plan between phones and let Gemini edit it.'}</p></div></div>
   <div class="grid2">
     ${sheetCard()}
+    ${voiceCard()}
     <div class="card stack"><h3>Look & day</h3><div class="fgrid">
       <label class="f">Theme<select data-b="settings.theme" data-rerender="1"><option value="dark" ${st.theme === 'dark' ? 'selected' : ''}>Dark (warm)</option><option value="light" ${st.theme === 'light' ? 'selected' : ''}>Light</option></select></label>
       <label class="f">Season art<select data-b="settings.season" data-rerender="1">${['auto', 'spring', 'summer', 'autumn', 'winter'].map(s => `<option value="${s}" ${st.season === s ? 'selected' : ''}>${s === 'auto' ? 'Automatic (Pacific month)' : s[0].toUpperCase() + s.slice(1)}</option>`).join('')}</select></label>
@@ -1789,5 +1799,194 @@ render();
 if (sync.cfg) syncNow({ quiet: true }); else setStatus('local', 'Saved on this device');
 setInterval(() => { if (R.view === 'today' && R.date === todayISO() && !dlg().open && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) { const n = $('.tl .now'); const tl = $('.tl'); if (n && tl) n.style.top = (nowMin() - +tl.dataset.r0) * +tl.dataset.px + 'px'; } }, 60000);
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+/* ================= Voice assistant ("Ask Life Garden") ================= */
+const voice = { rec: null, busy: false };
+document.body.insertAdjacentHTML('beforeend', '<button id="voiceFab" aria-label="Ask Life Garden by voice" title="Ask Life Garden">🎙</button>');
+$('#voiceFab').onclick = () => openVoice(true);
+
+/* ----- microphone → 16 kHz mono WAV (Web Audio; avoids MediaRecorder quirks in iPhone Home Screen apps) ----- */
+async function startRecording(onLevel, onAutoStop) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  const AC = window.AudioContext || window.webkitAudioContext; const ctx = new AC();
+  if (ctx.state === 'suspended') await ctx.resume();
+  const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
+  let heard = false, quietSince = 0; const t0 = Date.now();
+  proc.onaudioprocess = e => {
+    const d = e.inputBuffer.getChannelData(0); chunks.push(new Float32Array(d));
+    let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] * d[i]; const rms = Math.sqrt(s / (d.length / 4));
+    onLevel && onLevel(rms);
+    const now = Date.now();
+    if (rms > 0.02) { heard = true; quietSince = 0; } else if (heard && !quietSince) quietSince = now;
+    if ((heard && quietSince && now - quietSince > 1700) || now - t0 > 30000) onAutoStop && onAutoStop();
+  };
+  src.connect(proc); proc.connect(ctx.destination);
+  return {
+    async stop() {
+      try { src.disconnect(); proc.disconnect(); } catch (e) { }
+      stream.getTracks().forEach(t => t.stop());
+      const rate = ctx.sampleRate; try { await ctx.close(); } catch (e) { }
+      return { wav: encodeWav(downsample(chunks, rate, 16000), 16000), seconds: chunks.length * 4096 / rate, heard };
+    },
+    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } stream.getTracks().forEach(t => t.stop()); ctx.close().catch(() => { }); },
+  };
+}
+function downsample(chunks, from, to) {
+  const len = chunks.reduce((a, c) => a + c.length, 0), all = new Float32Array(len); let o = 0; for (const c of chunks) { all.set(c, o); o += c.length; }
+  if (from === to) return all;
+  const ratio = from / to, out = new Float32Array(Math.floor(len / ratio));
+  for (let i = 0; i < out.length; i++) { const a = Math.floor(i * ratio), b = Math.min(len, Math.floor((i + 1) * ratio)); let s = 0; for (let j = a; j < b; j++) s += all[j]; out[i] = s / Math.max(1, b - a); }
+  return out;
+}
+function encodeWav(samples, rate) {
+  const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) { const x = Math.max(-1, Math.min(1, samples[i])); v.setInt16(44 + i * 2, x < 0 ? x * 0x8000 : x * 0x7fff, true); }
+  return new Uint8Array(buf);
+}
+function toBase64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
+function speak(text) {
+  if (S.settings.speakReplies === false || !('speechSynthesis' in window) || !text) return;
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = 1.02; speechSynthesis.speak(u); } catch (e) { }
+}
+function unlockSpeech() { try { if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (e) { } }
+
+/* ----- what the assistant gets to see: about ten days of the plan and open next steps ----- */
+function agentContext() {
+  const t0 = todayISO(), from = [addDays(t0, -2), addDays(R.date, -3)].sort()[0], to = [addDays(t0, 10), addDays(R.date, 7)].sort()[1];
+  return {
+    now: `${t0} ${hhmm(nowMin())}`, weekday: DOW[dow(t0)], timezone: 'America/Los_Angeles (wall clock)', viewing_date: R.date, people: people(),
+    blocks: S.blocks.filter(b => b.date >= from && b.date <= to && !(b.status === 'proposed' && draftHidden())).sort((a, b) => (a.date + hhmm(a.start)).localeCompare(b.date + hhmm(b.start)))
+      .map(b => ({ id: b.id, date: b.date, start: hm(b.start), end: hm(b.end), title: b.title, kind: b.kind, ...(b.status ? { status: STATUS_WORDS[b.status] } : {}), ...(b.done ? { done: true } : {}) })),
+    next_steps: S.tasks.filter(t => !t.done).slice(0, 60).map(t => ({ id: t.id, title: t.title, ...(t.date ? { date: t.date } : {}) })),
+  };
+}
+
+/* ----- turn the assistant's proposals into checked, human-readable changes ----- */
+const shortDay = d => fmtDate(d, { weekday: 'short', month: 'short', day: 'numeric' });
+function planActions(actions) {
+  const out = [];
+  for (const a of actions || []) {
+    const blk = a.id && S.blocks.find(b => b.id === a.id), task = a.id && S.tasks.find(t => t.id === a.id);
+    const date = a.date ? parseDateLoose(a.date) : null, st = a.start ? parseTimeLoose(a.start) : null; let en = a.end ? parseTimeLoose(a.end) : null;
+    if (a.type === 'add_block') {
+      if (!a.title || !date || st == null) { out.push({ bad: `Couldn't add “${a.title || 'a block'}” — the day or time was unclear.` }); continue; }
+      if (en == null || en <= st) en = Math.min(1440, st + 60);
+      const kind = ['fixed', 'protected'].includes(a.kind) ? a.kind : 'flexible';
+      out.push({ text: `Add “${a.title}” · ${shortDay(date)}, ${fmtTime(st)}–${fmtTime(en)}${kind !== 'flexible' ? ` (${kind === 'fixed' ? 'appointment' : 'protected'})` : ''}`, k: 'blocks', fn: bl => bl.push({ id: uid(), title: a.title, date, start: st, end: en, kind, cat: 'auto', notes: 'Added by voice' }) });
+    } else if (a.type === 'update_block') {
+      if (!blk) { out.push({ bad: 'One change pointed at a block that isn’t in the plan, so it was skipped.' }); continue; }
+      const nd = date || blk.date, ns = st ?? blk.start; let ne = en ?? (st != null ? st + (blk.end - blk.start) : blk.end); if (ne <= ns) ne = Math.min(1440, ns + (blk.end - blk.start));
+      const bits = [];
+      if (nd !== blk.date || ns !== blk.start || ne !== blk.end) bits.push(`move to ${nd !== blk.date ? shortDay(nd) + ', ' : ''}${fmtTime(ns)}–${fmtTime(ne)}`);
+      if (a.title && a.title !== blk.title) bits.push(`rename to “${a.title}”`);
+      if (a.kind && a.kind !== blk.kind && KINDS[a.kind]) bits.push(`make it ${a.kind}`);
+      if (a.done !== undefined && !!a.done !== !!blk.done) bits.push(a.done ? 'mark done' : 'mark not done');
+      if (!bits.length) continue;
+      out.push({ text: `“${blk.title}”: ${bits.join(', ')}`, k: 'blocks', fn: bl => { const b = bl.find(x => x.id === blk.id); if (!b) return; Object.assign(b, { date: nd, start: ns, end: ne }); if (a.title) b.title = a.title; if (a.kind && KINDS[a.kind]) b.kind = a.kind; if (a.done !== undefined) b.done = !!a.done; if (b.src === 'draft') b.edited = true; } });
+    } else if (a.type === 'delete_block') {
+      if (!blk) { out.push({ bad: 'Couldn’t find the block to remove.' }); continue; }
+      out.push({ text: `Remove “${blk.title}” (${shortDay(blk.date)}, ${fmtTime(blk.start)})`, k: 'blocks', danger: true, fn: bl => { const i = bl.findIndex(x => x.id === blk.id); if (i >= 0) bl.splice(i, 1); } });
+    } else if (a.type === 'add_step') {
+      if (!a.title) continue;
+      out.push({ text: `New next step: “${a.title}”${date ? ' for ' + shortDay(date) : ''}`, k: 'tasks', fn: ts => ts.push({ id: uid(), title: a.title, area: AREAS.includes(a.area) ? a.area : 'Today', status: 'Confirmed', date: date || null, mins: '', notes: 'Added by voice', order: -Date.now() / 1e13 }) });
+    } else if (a.type === 'complete_step') {
+      if (!task) { out.push({ bad: 'Couldn’t find the next step to finish.' }); continue; }
+      out.push({ text: `Done: “${task.title}”`, k: 'tasks', fn: ts => { const t = ts.find(x => x.id === task.id); if (t) { t.done = true; t.doneAt = todayISO(); } } });
+    } else if (a.type === 'add_money') {
+      if (!(a.amount > 0)) { out.push({ bad: 'A money entry had no amount, so it was skipped.' }); continue; }
+      const ty = a.money_type === 'income' ? 'income' : 'expense';
+      out.push({ text: `${ty === 'income' ? 'Income' : 'Expense'} ${money(a.amount)} · ${a.title || 'untitled'}${date ? ' · ' + shortDay(date) : ''} (${a.settled ? (ty === 'income' ? 'received' : 'paid') : 'expected'})`, k: 'money', fn: M => M.entries.push({ id: uid(), type: ty, desc: a.title || '', cat: '', date: date || '', est: +a.amount, actual: a.settled ? +a.amount : '', settled: !!a.settled }) });
+    }
+  }
+  return out;
+}
+
+/* ----- the panel ----- */
+function openVoice(autoStart) {
+  if (!sync.cfg) return openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+    <div class="mb small"><p>The voice assistant runs through your Google Sheet, so connect it first. Then add a Gemini key in the Sheet's script (Settings & backup → Voice assistant).</p><p class="muted">Until then you can still speak into the quick-add bar on Today — tap the microphone on the iPhone keyboard.</p></div>
+    <div class="mf"><button class="btn" data-act="close">Close</button><button class="btn primary" id="vGo">Settings</button></div>`, m => { $('#vGo', m).onclick = () => { closeModal(); go('backup'); }; });
+  openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+    <div class="mb stack">
+      <div class="vmic-wrap"><button class="vmic" id="vMic" aria-label="Start talking"><span>🎙</span></button><div class="vlevel"><i id="vLevel"></i></div></div>
+      <p class="small sans muted" id="vStatus" style="text-align:center;margin:.2rem 0" aria-live="polite">Tap and speak — e.g. “Move yoga to 4”, “Dentist Tuesday at 10”, “What's on Thursday?”</p>
+      <form id="vForm" class="row" autocomplete="off"><input id="vText" class="grow" placeholder="…or type it"><button class="btn">Send</button></form>
+      <div id="vOut"></div>
+    </div>`, m => {
+    $('#vMic', m).onclick = () => voice.rec ? finishRecording() : beginRecording();
+    $('#vForm', m).onsubmit = e => { e.preventDefault(); const t = $('#vText', m).value.trim(); if (t) { unlockSpeech(); askAgent({ text: t }); } };
+    if (autoStart && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) beginRecording();
+  });
+  dlg().addEventListener('close', () => { if (voice.rec) { voice.rec.cancel(); voice.rec = null; } try { speechSynthesis.cancel(); } catch (e) { } }, { once: true });
+}
+const vStatus = t => { const el = $('#vStatus'); if (el) el.textContent = t; };
+async function beginRecording() {
+  if (voice.busy) return;
+  unlockSpeech();
+  if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { vStatus('This device can’t record here — type instead (tap the keyboard’s microphone to dictate).'); $('#vText') && $('#vText').focus(); return; }
+  try {
+    voice.rec = await startRecording(rms => { const l = $('#vLevel'); if (l) l.style.width = Math.min(100, rms * 900) + '%'; }, () => finishRecording());
+    $('#vMic') && $('#vMic').classList.add('on'); $('#vMic') && $('#vMic').setAttribute('aria-label', 'Stop'); vStatus('Listening… I’ll stop when you pause.');
+  } catch (e) {
+    voice.rec = null;
+    vStatus(e && e.name === 'NotAllowedError' ? 'Microphone access is off. Allow it in iPhone Settings, or type below — the keyboard microphone works too.' : 'Couldn’t start the microphone — type below instead.');
+  }
+}
+async function finishRecording() {
+  const r = voice.rec; if (!r) return; voice.rec = null;
+  $('#vMic') && $('#vMic').classList.remove('on'); const l = $('#vLevel'); if (l) l.style.width = '0';
+  const { wav, seconds, heard } = await r.stop();
+  if (!heard || seconds < 0.6) { vStatus('I didn’t catch anything — tap the mic and try again.'); return; }
+  askAgent({ audio: { mime: 'audio/wav', data: toBase64(wav) } });
+}
+async function askAgent(input) {
+  if (voice.busy) return; voice.busy = true;
+  vStatus('Thinking…'); $('#vOut') && ($('#vOut').innerHTML = '');
+  try {
+    if (sync.localRev && sync.status !== 'saved') await syncNow({ quiet: true }).catch(() => { });
+    const r = await api('POST', { op: 'agent', ...input, context: agentContext() });
+    showAgent(r.agent || {});
+  } catch (e) {
+    const msg = { nokey: 'The assistant needs a Gemini key in the Sheet’s script — see Settings & backup → Voice assistant.', rate: 'Gemini is busy right now. Try again in a minute.', apikey: 'Gemini didn’t accept the key. Check GEMINI_API_KEY in the Sheet’s script settings.' }[e.message] || (e.name === 'AbortError' ? 'That took too long — try again.' : (e.message || 'Something went wrong.'));
+    vStatus(msg);
+  } finally { voice.busy = false; }
+}
+function showAgent(a) {
+  const plan = planActions(a.actions), ok = plan.filter(p => !p.bad), bad = plan.filter(p => p.bad);
+  vStatus('');
+  const out = $('#vOut'); if (!out) return;
+  out.innerHTML = `${a.heard ? `<p class="small sans muted" style="margin:0 0 .3rem">You said: “${esc(a.heard)}”</p>` : ''}
+    ${a.reply ? `<p style="margin:.2rem 0 .6rem;font-size:1.05rem">${esc(a.reply)}</p>` : ''}
+    ${ok.length ? `<div class="card flat" style="padding:.5rem .7rem">${ok.map((p, i) => `<label class="row small" style="flex-wrap:nowrap;padding:.35rem 0;align-items:flex-start;gap:.5rem;${p.danger ? 'color:var(--bad)' : ''}"><input type="checkbox" data-vi="${i}" checked style="margin-top:.2rem"> <span>${esc(p.text)}</span></label>`).join('')}</div>
+      <div class="row" style="justify-content:flex-end;margin-top:.6rem"><button class="btn" id="vAgain">Not quite — try again</button><button class="btn primary" id="vApply">Apply ${ok.length > 1 ? ok.length + ' changes' : 'change'}</button></div>` : ''}
+    ${bad.length ? `<p class="tiny sans" style="color:var(--warn)">${bad.map(b => esc(b.bad)).join('<br>')}</p>` : ''}`;
+  speak(a.reply);
+  if ($('#vAgain')) $('#vAgain').onclick = () => { out.innerHTML = ''; beginRecording(); };
+  if ($('#vApply')) $('#vApply').onclick = () => {
+    const pick = $$('[data-vi]', out).filter(c => c.checked).map(c => ok[+c.dataset.vi]); if (!pick.length) return;
+    const groups = {}; for (const p of pick) (groups[p.k] = groups[p.k] || []).push(p.fn);
+    for (const [k, fns] of Object.entries(groups)) commit(k, 'voice change', root => fns.forEach(f => f(root)), { render: false });
+    closeModal(); render();
+    const firstDate = (a.actions || []).map(x => x.date && parseDateLoose(x.date)).find(Boolean);
+    toast(`Done — ${pick.length} change${pick.length > 1 ? 's' : ''}`, 'Undo', () => { for (let i = 0; i < Object.keys(groups).length; i++) undo(); }, 8000);
+    if (firstDate && firstDate !== R.date && R.view === 'today') setTimeout(() => toast(`See ${shortDay(firstDate)}?`, 'Go', () => go('today', firstDate)), 400);
+  };
+}
+
+/* ----- settings card ----- */
+function voiceCard() {
+  return `<div class="card stack" style="grid-column:1/-1"><div class="row between"><h3>Voice assistant</h3><button class="btn sm primary" data-act="voiceTry">🎙 Try it</button></div>
+    <p class="small" style="margin:0">Tap 🎙 on any screen and say what you want — “Move yoga to 4 tomorrow”, “Dentist Tuesday at 10”, “I paid the phone bill, 45 dollars”, “What's on Thursday?”. You'll see each change before it's saved. It uses Gemini through your own Google Sheet script.</p>
+    <details class="disc"><summary>Turn it on (2 minutes, on a computer)</summary><div class="in small stack">
+      <p><b>1.</b> Signed in as the Sheet's owner, open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and create an API key. Copy it.</p>
+      <p><b>2.</b> In the Sheet: <b>Extensions → Apps Script → Project Settings</b> (gear) → <b>Script properties → Add script property</b>. Property <code>GEMINI_API_KEY</code>, value: the key. Save.</p>
+      <p><b>3.</b> If the script was set up before the assistant existed, paste the latest script (<button class="btn sm" data-act="copyScript">Copy the script</button>), keep your passcode line, and <b>Deploy → Manage deployments → Edit → New version</b>.</p>
+      <p class="tiny muted sans">Privacy: on Gemini's free tier Google may use requests to improve its products; turning on billing in AI Studio stops that. Each request sends the recording plus about ten days of the plan, and typically costs well under a cent on the paid tier.</p>
+    </div></details>
+    <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label></div>`;
+}
+ACT.voiceTry = () => openVoice(false);
 </script>
 </body></html>
