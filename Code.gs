@@ -253,7 +253,7 @@ const AGENT_SCHEMA = {
         properties: {
           type: { type: 'STRING', enum: ['add_block', 'update_block', 'delete_block', 'add_step', 'complete_step', 'add_money'] },
           id: { type: 'STRING', description: 'Existing block or step id from the context. Never invent one.' },
-          title: { type: 'STRING' },
+          title: { type: 'STRING', description: 'Only the short name, e.g. "Dentist". Never dates, times, notes or reasoning.' },
           date: { type: 'STRING', description: 'YYYY-MM-DD' },
           start: { type: 'STRING', description: '24-hour HH:MM' },
           end: { type: 'STRING', description: '24-hour HH:MM, after start, same day (24:00 = midnight)' },
@@ -265,6 +265,7 @@ const AGENT_SCHEMA = {
           settled: { type: 'BOOLEAN', description: 'true only if she says it was already paid or received' },
         },
         required: ['type'],
+        propertyOrdering: ['type', 'id', 'date', 'start', 'end', 'kind', 'done', 'money_type', 'amount', 'settled', 'area', 'title'],
       },
     },
   },

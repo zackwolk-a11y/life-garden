@@ -1906,11 +1906,28 @@ function agentTime(v, start) {
   if (start != null && (m = s.match(/(\d+(?:\.\d+)?)\s*(h|hour|hr|m|min)/i))) return Math.min(1440, start + Math.round(/^h/i.test(m[2]) ? +m[1] * 60 : +m[1]));
   return null;
 }
+/* If Gemini "thinks out loud" inside the title (e.g. "... Title: X. Date: 2026-11-23. Start: 06:00 ..."), recover the real fields. */
+function salvage(a) {
+  const t = String(a.title || '');
+  if (!(t.length > 70 || /\b(title|date|start|end|kind)\s*:/i.test(t) || /\b(wait|hmm|no,)\b/i.test(t))) return a;
+  const last = re => { const m = [...t.matchAll(re)]; return m.length ? m[m.length - 1][1].trim() : null; };
+  const title = last(/title\s*:\s*([^.\n]+?)(?=\s*(?:\.|\n|$|date\s*:|start\s*:|end\s*:|kind\s*:))/gi);
+  const kind = (last(/kind\s*:\s*(flexible|fixed|protected)/gi) || '').toLowerCase();
+  const out = { ...a,
+    title: title || t.split(/[.?!\n]/)[0].slice(0, 60).trim(),
+    date: a.date || last(/date\s*:\s*(\d{4}-\d{1,2}-\d{1,2})/gi) || undefined,
+    start: a.start || last(/start\s*:\s*(\d{1,2}:\d{2}(?:\s*[ap]\.?m\.?)?)/gi) || undefined,
+    end: a.end || last(/end\s*:\s*(\d{1,2}:\d{2}(?:\s*[ap]\.?m\.?)?)/gi) || undefined,
+    kind: a.kind || kind || undefined };
+  return out;
+}
 function planActions(actions) {
   const out = [];
-  for (const a of actions || []) {
+  for (const raw of actions || []) {
+    const a = salvage(raw);
     const blk = a.id && S.blocks.find(b => b.id === a.id), task = a.id && S.tasks.find(t => t.id === a.id);
-    const date = a.date ? parseDateLoose(a.date) : (a.start && parseDateLoose(String(a.start).split('T')[0])) || null;
+    const startDate = /^\d{4}-\d{1,2}-\d{1,2}/.test(String(a.start || '')) ? parseDateLoose(String(a.start).slice(0, 10)) : null;   // only from a full date-time like 2026-11-23T06:00
+    const date = (a.date ? parseDateLoose(a.date) : null) || startDate;
     const st = agentTime(a.start); let en = agentTime(a.end, st);
     if (a.type === 'add_block') {
       if (!a.title || !date || st == null) { out.push({ bad: `Couldn't add “${a.title || 'a block'}” — the day or time was unclear.` }); continue; }
@@ -1994,11 +2011,21 @@ async function agentConfig() {
 }
 function rememberModel(m) { try { const c = JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null'); if (c) { c.model = m; localStorage.setItem(AGENT_CFG_KEY, JSON.stringify(c)); } } catch (e) { } }
 function preferredModel() { try { return (JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null') || {}).model; } catch (e) { return null; } }
+function tidySchema(schema) {
+  const s = JSON.parse(JSON.stringify(schema)), item = s.properties && s.properties.actions && s.properties.actions.items;
+  if (item && item.properties) {
+    item.properties.title = { type: 'STRING', description: 'Only the short name of the block or step, exactly as she would write it (e.g. "Dentist"). Never put dates, times, notes or reasoning here.' };
+    item.propertyOrdering = ['type', 'id', 'date', 'start', 'end', 'kind', 'done', 'money_type', 'amount', 'settled', 'area', 'title'];
+  }
+  s.propertyOrdering = ['heard', 'actions', 'reply'];
+  return s;
+}
 async function geminiDirect(cfg, input, context) {
   const parts = [];
   if (input.audio) parts.push({ inlineData: { mimeType: input.audio.mime, data: input.audio.data } });
   parts.push({ text: 'Plan context (JSON):\n' + JSON.stringify(context) + (input.text ? '\n\nJordan typed: ' + input.text : "\n\nJordan's request is in the audio.") });
-  const base = { systemInstruction: { parts: [{ text: cfg.rules }] }, contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: cfg.schema, temperature: 0.2 } };
+  const rules = cfg.rules + '\nFill every field of an action separately: date as YYYY-MM-DD, start/end as HH:MM, and a short title. Do not think out loud in any field.';
+  const base = { systemInstruction: { parts: [{ text: rules }] }, contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: tidySchema(cfg.schema), temperature: 0.2 } };
   const pref = preferredModel(), models = pref ? [pref, ...cfg.models.filter(m => m !== pref)] : cfg.models;
   for (const m of models) {
     for (const thinking of [true, false]) {
@@ -2007,6 +2034,7 @@ async function geminiDirect(cfg, input, context) {
       let r; try { r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.key }, body: JSON.stringify(body), signal: ctrl.signal }); } finally { clearTimeout(to); }
       const txt = await r.text();
       if (r.status === 400 && thinking && /thinking/i.test(txt)) continue;      // model doesn't take that setting → retry plainly
+      if (r.status === 400 && /propertyOrdering/i.test(txt) && !base._plain) { base._plain = 1; base.generationConfig.responseSchema = cfg.schema; continue; }
       if (r.status === 404) break;                                             // try the next model
       if (r.status === 429) throw new Error('rate');
       if (r.status === 401 || r.status === 403 || (r.status === 400 && /API key/i.test(txt))) throw new Error('apikey');
