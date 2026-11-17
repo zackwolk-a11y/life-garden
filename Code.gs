@@ -2,15 +2,16 @@
  * Jordan's Life Garden — Google Sheet sync backend
  * ------------------------------------------------
  * 1. In the Google Sheet: Extensions → Apps Script, delete what's there, paste this whole file.
- * 2. Change PASSCODE below to a private phrase (the app asks for it once per device).
+ * 2. PASSCODE below: the Life Garden app fills in a strong one when you use its "Copy the script" button.
+ *    (Pasting by hand? Change it to a private phrase of 4+ random words.)
  * 3. Run the function  setup  once (▶ Run) and allow access when Google asks.
  * 4. Deploy → New deployment → type "Web app" → Execute as: Me → Who has access: Anyone → Deploy.
  *    Copy the Web app URL into the Life Garden app (Settings & backup → Google Sheet).
  * After changing this code later, use Deploy → Manage deployments → Edit → Version: New version.
  *
  * Voice assistant (optional): get a Gemini API key at https://aistudio.google.com/apikey (same Google account),
- * then in this Apps Script project: Project Settings (gear) → Script properties → Add script property
- *   Property: GEMINI_API_KEY    Value: (paste the key)    → Save.  No redeploy needed.
+ * then reload the Sheet and use the menu  Life Garden → Set voice assistant key.  No redeploy needed.
+ * (Or: Project Settings → Script properties → GEMINI_API_KEY.)
  */
 const PASSCODE = 'CHANGE-ME-to-a-private-phrase';
 // Use a long phrase (4+ random words). After 10 wrong passcodes in 15 minutes the Sheet stops answering for 30 minutes.
@@ -27,6 +28,28 @@ const HELP_TAB = 'How to edit (for Gemini)';
 const BACKUP_FOLDER = 'Life Garden backups';
 const CHUNK = 45000;
 
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Life Garden')
+    .addItem('Set voice assistant key…', 'setGeminiKey')
+    .addItem('Check voice assistant key', 'checkGeminiKey')
+    .addSeparator().addItem('Repair tabs', 'setup')
+    .addToUi();
+}
+function setGeminiKey() {
+  const ui = SpreadsheetApp.getUi();
+  const r = ui.prompt('Life Garden voice assistant', 'Paste the Gemini API key from aistudio.google.com/apikey:', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const key = r.getResponseText().trim();
+  if (!key) return ui.alert('No key entered — nothing changed.');
+  PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', key);
+  checkGeminiKey();
+}
+function checkGeminiKey() {
+  const ui = SpreadsheetApp.getUi(), key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) return ui.alert('No voice assistant key yet. Use Life Garden → Set voice assistant key.');
+  const res = agent_({ text: 'What is on my plan today?', context: { now: Utilities.formatDate(new Date(), 'America/Los_Angeles', 'yyyy-MM-dd HH:mm'), blocks: [], next_steps: [] } });
+  ui.alert(res.ok ? 'The voice assistant is working (model ' + res.model + ').' : 'Gemini said: ' + res.error + (res.error === 'apikey' ? ' — the key was not accepted. Create a new one and set it again.' : ''));
+}
 function setup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   for (const t of Object.values(TABLES)) ensureTable_(ss, t);
@@ -60,6 +83,7 @@ function setup() {
   [4, 11, 14, 15, 16].forEach(r => h.getRange(r, 1).setFontWeight('bold'));
   h.setTabColor('#e8964a');
   const extra = ss.getSheetByName('Sheet1'); if (extra && extra.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(extra);
+  try { onOpen(); } catch (e) { }
   return 'Ready. Now Deploy → New deployment → Web app.';
 }
 

@@ -1665,6 +1665,10 @@ const setupCode = c => btoa(unescape(encodeURIComponent(JSON.stringify({ u: c.ur
 const readSetupCode = s => { s = String(s || '').trim(); const m = s.match(/connect=([A-Za-z0-9+/=_-]+)/); if (m) s = m[1]; try { const o = JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, '+').replace(/_/g, '/'))))); return o.u && o.k ? { url: o.u, key: o.k } : null; } catch (e) { return null; } };
 const setupLink = c => location.origin + location.pathname + '#connect=' + setupCode(c).replace(/\+/g, '-').replace(/\//g, '_');
 let scriptText = '';
+const WORDS = 'amber,anchor,apple,aspen,autumn,basil,beacon,birch,bloom,breeze,brook,canyon,cedar,cello,clover,comet,coral,cosmos,dahlia,dawn,delta,ember,fable,fern,fiddle,fjord,flint,garnet,ginger,glade,harbor,hazel,heron,indigo,iris,ivy,jasmine,juniper,kestrel,lantern,laurel,lilac,linen,lotus,lumen,maple,marigold,meadow,mint,moss,nectar,nutmeg,oasis,olive,opal,orchid,otter,pebble,pepper,pine,plum,poppy,prism,quartz,quill,raven,reed,river,saffron,sage,sequoia,sierra,sparrow,spruce,sunny,tango,thistle,thyme,topaz,tulip,velvet,violet,willow,wren,yarrow,zephyr'.split(',');
+function newPasscode() { const r = new Uint32Array(5); crypto.getRandomValues(r); return [0, 1, 2, 3].map(i => WORDS[r[i] % WORDS.length]).join('-') + '-' + (r[4] % 90 + 10); }
+function pendingPasscode() { let k = null; try { k = localStorage.getItem('lifegarden.newkey'); } catch (e) { } if (!k) { k = newPasscode(); try { localStorage.setItem('lifegarden.newkey', k); } catch (e) { } } return k; }
+const scriptWithKey = k => scriptText.replace("const PASSCODE = 'CHANGE-ME-to-a-private-phrase';", `const PASSCODE = '${k.replace(/'/g, '')}';`);
 function sheetCard() {
   const c = sync.cfg;
   if (!scriptText) fetch('Code.gs').then(r => r.ok ? r.text() : '').then(t => { scriptText = t; }).catch(() => { });
@@ -1677,19 +1681,18 @@ function sheetCard() {
     <div class="row"><input id="setupCode" placeholder="Setup link or code" class="grow" autocomplete="off"><button class="btn primary" data-act="connectCode">Connect</button></div>
     <details class="disc"><summary>First-time setup (about 5 minutes, on a computer)</summary><div class="in small stack">
       <p><b>1.</b> In Google Drive, make a new Google Sheet and name it “Jordan’s Life Garden” (or open <a href="https://sheets.new" target="_blank" rel="noopener">sheets.new</a>).</p>
-      <p><b>2.</b> In the Sheet: <b>Extensions → Apps Script</b>. Delete the sample code and paste the Life Garden script. <button class="btn sm" data-act="copyScript">Copy the script</button> <a class="btn sm ghost" href="Code.gs" target="_blank" rel="noopener">View it</a></p>
-      <p><b>3.</b> On the first line of code, change <code>CHANGE-ME-to-a-private-phrase</code> to a private passcode. Save (💾).</p>
-      <p><b>4.</b> With <b>setup</b> chosen in the function menu, press <b>▶ Run</b> and allow access when Google asks. (If it warns the app isn’t verified: Advanced → Go to project.) New tabs appear in the Sheet, including “How to edit (for Gemini)”.</p>
-      <p><b>5.</b> <b>Deploy → New deployment</b> → gear ⚙ → <b>Web app</b>. Execute as: <b>Me</b>. Who has access: <b>Anyone</b>. Deploy, then copy the <b>Web app URL</b> (ends in <code>/exec</code>).</p>
-      <p><b>6.</b> Paste it and your passcode here:</p>
-      <div class="fgrid"><label class="f">Web app URL<input id="sheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label><label class="f">Passcode<input id="sheetKey" autocomplete="off"></label></div>
+      <p><b>2.</b> In the Sheet: <b>Extensions → Apps Script</b>. Select all the sample code, delete it, and paste the Life Garden script: <button class="btn sm primary" data-act="copyScript">Copy the script</button> <span class="tiny muted sans">(it already contains a private passcode, shown below)</span>. Click Save 💾.</p>
+      <p><b>3.</b> In the toolbar's function menu choose <b>setup</b>, press <b>▶ Run</b>, and allow access when Google asks. If it says Google hasn't verified the app: <b>Advanced → Go to (project name)</b> → Allow. New tabs appear in the Sheet.</p>
+      <p><b>4.</b> <b>Deploy → New deployment</b> → gear ⚙ → <b>Web app</b>. Execute as: <b>Me</b>. Who has access: <b>Anyone</b>. Deploy, then copy the <b>Web app URL</b> (ends in <code>/exec</code>).</p>
+      <p><b>5.</b> Paste it here and Connect:</p>
+      <div class="fgrid"><label class="f">Web app URL<input id="sheetUrl" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off"></label><label class="f">Passcode (already in the script)<input id="sheetKey" autocomplete="off" value="${esc(pendingPasscode())}"></label></div>
       <button class="btn primary" data-act="connectSheet" style="align-self:start">Connect</button>
       <p class="tiny muted sans">If this device already has a plan and the Sheet is empty, this device's plan becomes the starting point. Only someone with both the Web app URL <i>and</i> the passcode can reach the plan, and the Sheet locks itself after repeated wrong guesses. For Jordan-only access, do these steps signed in to <b>Jordan's</b> Google account so the Sheet is hers.</p>
     </div></details></div>`;
 }
 async function doConnect(cfg) {
   setStatus('saving', 'Connecting…');
-  try { const r = await connectSheet(cfg.url, cfg.key); render(); toast(r === 'pushed' ? 'Connected — your plan is now in the Sheet' : r === 'used' ? 'Connected — loaded the plan from the Sheet' : 'Connected and merged'); }
+  try { const r = await connectSheet(cfg.url, cfg.key); try { localStorage.removeItem('lifegarden.newkey'); } catch (e) { } render(); toast(r === 'pushed' ? 'Connected — your plan is now in the Sheet' : r === 'used' ? 'Connected — loaded the plan from the Sheet' : 'Connected and merged'); }
   catch (e) { setStatus(sync.cfg ? 'error' : 'local', sync.cfg ? 'Sync problem' : 'Saved on this device'); toast(e.message || 'Couldn’t connect'); }
 }
 Object.assign(ACT, {
@@ -1697,7 +1700,11 @@ Object.assign(ACT, {
   connectSheet: () => doConnect({ url: $('#sheetUrl').value, key: $('#sheetKey').value }),
   connectCode: () => { const c = readSetupCode($('#setupCode').value); if (!c) return toast('That doesn’t look like a setup link or code'); doConnect(c); },
   copySetupLink: () => navigator.clipboard?.writeText(setupLink(sync.cfg)).then(() => toast('Setup link copied — text it to Jordan'), () => openModal(`<div class="mh"><h3>Setup link</h3></div><div class="mb"><textarea rows="4" readonly>${esc(setupLink(sync.cfg))}</textarea></div><div class="mf"><button class="btn" data-act="close">Done</button></div>`)),
-  copyScript: () => scriptText ? navigator.clipboard?.writeText(scriptText).then(() => toast('Script copied — paste it into Apps Script'), () => toast('Copy blocked — use “View it” and copy from there')) : toast('Script still loading — try again in a second'),
+  copyScript: () => {
+    if (!scriptText) return toast('Script still loading — try again in a second');
+    const k = (sync.cfg && sync.cfg.key) || ($('#sheetKey') && $('#sheetKey').value.trim()) || pendingPasscode(), txt = scriptWithKey(k);
+    navigator.clipboard?.writeText(txt).then(() => toast('Script copied, with your passcode inside — paste it into Apps Script'), () => openModal(`<div class="mh"><h3>Copy this script</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div><div class="mb"><textarea rows="12" readonly>${esc(txt)}</textarea></div><div class="mf"><button class="btn" data-act="close">Done</button></div>`));
+  },
   disconnect: async () => { if (await confirmBox('Stop syncing this device? The plan stays on this phone; the Sheet keeps its copy.', 'Disconnect')) { disconnectSheet(); render(); } },
 });
 const backupText = () => JSON.stringify({ app: 'life-garden', version: 1, exported: new Date().toISOString(), data: S }, null, 1);
@@ -1981,8 +1988,8 @@ function voiceCard() {
     <p class="small" style="margin:0">Tap 🎙 on any screen and say what you want — “Move yoga to 4 tomorrow”, “Dentist Tuesday at 10”, “I paid the phone bill, 45 dollars”, “What's on Thursday?”. You'll see each change before it's saved. It uses Gemini through your own Google Sheet script.</p>
     <details class="disc"><summary>Turn it on (2 minutes, on a computer)</summary><div class="in small stack">
       <p><b>1.</b> Signed in as the Sheet's owner, open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and create an API key. Copy it.</p>
-      <p><b>2.</b> In the Sheet: <b>Extensions → Apps Script → Project Settings</b> (gear) → <b>Script properties → Add script property</b>. Property <code>GEMINI_API_KEY</code>, value: the key. Save.</p>
-      <p><b>3.</b> If the script was set up before the assistant existed, paste the latest script (<button class="btn sm" data-act="copyScript">Copy the script</button>), keep your passcode line, and <b>Deploy → Manage deployments → Edit → New version</b>.</p>
+      <p><b>2.</b> Reload the Google Sheet. In its menu bar, open <b>Life Garden → Set voice assistant key…</b>, paste the key, OK. It tests the key and tells you if it works.</p>
+      <p class="tiny muted sans">Set up the Sheet before today? Paste the latest script first (<button class="btn sm" data-act="copyScript">Copy the script</button> — it keeps your passcode), then <b>Deploy → Manage deployments → Edit → Version: New version</b>.</p>
       <p class="tiny muted sans">Privacy: on Gemini's free tier Google may use requests to improve its products; turning on billing in AI Studio stops that. Each request sends the recording plus about ten days of the plan, and typically costs well under a cent on the paid tier.</p>
     </div></details>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label></div>`;
