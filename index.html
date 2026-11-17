@@ -1883,8 +1883,11 @@ function unlockSpeech() { try { if ('speechSynthesis' in window) { const u = new
 function agentContext() {
   const t0 = todayISO(), from = [addDays(t0, -1), addDays(R.date, -1)].sort()[0], to = [addDays(t0, 7), addDays(R.date, 3)].sort()[1];
   const st = { confirmed: 'C', proposed: 'P', needs: 'N', source: 'S', sourceproposed: 'SP' };
+  const upcoming = {}; for (let i = 0; i < 14; i++) { const d = addDays(t0, i); upcoming[d] = (i === 0 ? 'today ' : i === 1 ? 'tomorrow ' : i < 7 ? 'this coming ' : 'the following ') + ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow(d)]; }
   return {
     now: `${t0} ${hhmm(nowMin())} (${DOW[dow(t0)]})`, viewing_date: R.date, people: people(),
+    calendar: upcoming,
+    date_rules: 'Pick dates from "calendar". If she names no day: use viewing_date, but if that is today and the time has already passed, use tomorrow. A weekday name means its next occurrence after today ("Monday" said on a Monday = 7 days later); "next <weekday>" means the same unless she says "next week". "Tonight"/"this morning"/"this afternoon" mean today. When unsure which day she means, ask instead of guessing. Say the weekday and date in your reply when you add or move something.',
     blocks_format: 'id|date|start-end|title|kind|status(C confirmed, P proposed draft, N needs confirmation, S source-listed, SP source+proposed, blank = her own)|done',
     blocks: S.blocks.filter(b => b.date >= from && b.date <= to && !b.sleep && !(b.status === 'proposed' && draftHidden())).sort((a, b) => (a.date + hhmm(a.start)).localeCompare(b.date + hhmm(b.start)))
       .map(b => [b.id, b.date, hm(b.start) + '-' + hm(b.end), b.title, b.kind, st[b.status] || '', b.done ? 'done' : ''].join('|').replace(/\|+$/, '')),
