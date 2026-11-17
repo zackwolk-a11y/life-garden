@@ -32,6 +32,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('Life Garden')
     .addItem('Set voice assistant key…', 'setGeminiKey')
     .addItem('Check voice assistant key', 'checkGeminiKey')
+    .addItem('Set ChatGPT (OpenAI) key…', 'setOpenAIKey')
     .addSeparator().addItem('Repair tabs', 'setup')
     .addToUi();
 }
@@ -43,6 +44,13 @@ function setGeminiKey() {
   if (!key) return ui.alert('No key entered — nothing changed.');
   PropertiesService.getScriptProperties().setProperty('GEMINI_API_KEY', key);
   checkGeminiKey();
+}
+function setOpenAIKey() {
+  const ui = SpreadsheetApp.getUi();
+  const r = ui.prompt('Life Garden voice assistant', 'Paste the OpenAI API key (starts with sk-) from platform.openai.com/api-keys:', ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK || !r.getResponseText().trim()) return;
+  PropertiesService.getScriptProperties().setProperty('OPENAI_API_KEY', r.getResponseText().trim());
+  ui.alert('Saved. Phones connected to this Sheet will use it for ChatGPT after reopening Life Garden.');
 }
 function checkGeminiKey() {
   const ui = SpreadsheetApp.getUi(), key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
@@ -109,8 +117,8 @@ function doPost(e) {
   const bad = checkKey_(body.k); if (bad) return out_({ ok: false, error: bad });
   if (body.op === 'agent') return out_(agent_(body));
   if (body.op === 'agentConfig') {   // lets the app call Gemini directly (faster); passcode-protected like everything else
-    const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-    return out_(key ? { ok: true, agentConfig: { key, models: GEMINI_MODELS, rules: AGENT_RULES, schema: AGENT_SCHEMA } } : { ok: false, error: 'nokey' });
+    const props = PropertiesService.getScriptProperties(), key = props.getProperty('GEMINI_API_KEY'), openaiKey = props.getProperty('OPENAI_API_KEY');
+    return out_(key || openaiKey ? { ok: true, agentConfig: { key, openaiKey, models: GEMINI_MODELS, rules: AGENT_RULES, schema: AGENT_SCHEMA } } : { ok: false, error: 'nokey' });
   }
   if (body.backup && !body.ops) { saveBackup_(body.backup); return out_({ ok: true }); }
   const lock = LockService.getScriptLock(); lock.waitLock(28000);

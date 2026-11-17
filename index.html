@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Life Garden">
 <link rel="preconnect" href="https://generativelanguage.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://api.openai.com" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1965,7 +1966,7 @@ function planActions(actions) {
 
 /* ----- the panel ----- */
 function openVoice(autoStart) {
-  if (!sync.cfg && !localVoiceKey()) return openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+  if (!sync.cfg && !localVoiceKey() && !localOpenAIKey()) return openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="mb small"><p>The voice assistant runs through your Google Sheet, so connect it first. Then add a Gemini key in the Sheet's script (Settings & backup → Voice assistant).</p><p class="muted">Until then you can still speak into the quick-add bar on Today — tap the microphone on the iPhone keyboard.</p></div>
     <div class="mf"><button class="btn" data-act="close">Close</button><button class="btn primary" id="vGo">Settings</button></div>`, m => { $('#vGo', m).onclick = () => { closeModal(); go('backup'); }; });
   openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
@@ -2092,22 +2093,111 @@ async function geminiDirect(key, input, context) {
   }
   throw new Error('No Gemini model answered');
 }
+
+/* ----- ChatGPT (OpenAI): transcribe her voice, then a fast chat model decides the change ----- */
+const OPENAI_LOCAL = 'lifegarden.openaikey', OPENAI_COMBO = 'lifegarden.openaicombo';
+const provider = () => S.settings.voiceProvider === 'gemini' ? 'gemini' : (S.settings.voiceProvider === 'openai' || localOpenAIKey() ? 'openai' : 'gemini');
+const localOpenAIKey = () => { try { return localStorage.getItem(OPENAI_LOCAL) || ''; } catch (e) { return ''; } };
+async function openaiKey() {
+  const lk = localOpenAIKey(); if (lk) return lk;
+  if (!sync.cfg) return null;
+  const c = lsGet(AGENT_CFG_KEY);
+  if (c && c.url === sync.cfg.url && 'openai' in c && Date.now() - c.at < 30 * 864e5) return c.openai || null;
+  try {
+    const r = await api('POST', { op: 'agentConfig' });
+    const cfg = r.agentConfig || {};
+    lsSet(AGENT_CFG_KEY, { url: sync.cfg.url, at: Date.now(), key: cfg.key || null, none: !cfg.key, openai: cfg.openaiKey || null });
+    return cfg.openaiKey || null;
+  } catch (e) { return null; }
+}
+const OA_SCHEMA = (() => {
+  const S2 = (t, d) => ({ type: [t, 'null'], ...(d ? { description: d } : {}) });
+  const E = (vals) => ({ type: ['string', 'null'], enum: [...vals, null] });
+  const props = {
+    type: { type: 'string', enum: ['add_block', 'update_block', 'delete_block', 'add_step', 'complete_step', 'add_money'] },
+    id: S2('string', 'Existing block or step id from the context, else null. Never invent one.'),
+    date: S2('string', 'YYYY-MM-DD'), start: S2('string', '24-hour HH:MM'), end: S2('string', '24-hour HH:MM, same day, after start (24:00 = midnight)'),
+    kind: E(['flexible', 'fixed', 'protected']), done: S2('boolean'), area: S2('string'),
+    money_type: E(['income', 'expense']), amount: S2('number'), settled: S2('boolean', 'true only if she says it was already paid or received'),
+    title: S2('string', 'Only the short name, e.g. "Dentist". Never dates, times, notes or reasoning.'),
+  };
+  return { type: 'object', additionalProperties: false, required: ['heard', 'actions', 'reply'], properties: {
+    heard: { type: 'string', description: 'What Jordan said.' },
+    actions: { type: 'array', items: { type: 'object', additionalProperties: false, required: Object.keys(props), properties: props } },
+    reply: { type: 'string', description: 'One short, warm sentence to read aloud. Name the weekday and date of anything added or moved.' },
+  } };
+})();
+const oaModels = () => S.settings.voiceCareful ? ['gpt-4.1', 'gpt-5-mini', 'gpt-4.1-mini', 'gpt-4o'] : ['gpt-4.1-mini', 'gpt-4o-mini', 'gpt-5-mini', 'gpt-4.1-nano'];
+async function oaFetch(key, path, init, ms) {
+  const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), ms || 20000);
+  try { const r = await fetch('https://api.openai.com/v1/' + path, { ...init, headers: { Authorization: 'Bearer ' + key, ...(init.headers || {}) }, signal: ctrl.signal }); return { r, txt: await r.text() }; }
+  finally { clearTimeout(to); }
+}
+const oaFail = (r, txt) => { if (r.status === 401) throw new Error('apikey_openai'); if (r.status === 429) throw new Error(/quota|billing/i.test(txt) ? 'quota_openai' : 'rate'); };
+async function openaiTranscribe(key, b64) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const pref = lsGet('lifegarden.oastt'), list = ['gpt-transcribe', 'gpt-4o-mini-transcribe', 'whisper-1'];
+  for (const model of pref && list.includes(pref) ? [pref, ...list.filter(m => m !== pref)] : list) {
+    const fd = new FormData();
+    fd.append('file', new Blob([bytes], { type: 'audio/wav' }), 'speech.wav'); fd.append('model', model);
+    if (model !== 'whisper-1') fd.append('prompt', `A short request to a day planner. Names: ${people().join(', ')}, Tucker, Lesley, Glimmer. Today is ${DOW[dow(todayISO())]}.`);
+    const { r, txt } = await oaFetch(key, 'audio/transcriptions', { method: 'POST', body: fd }, 20000);
+    oaFail(r, txt);
+    if (r.status === 404 || r.status === 400) continue;
+    if (!r.ok) throw new Error('ChatGPT couldn’t hear that (' + r.status + ')');
+    lsSet('lifegarden.oastt', model);
+    return (JSON.parse(txt).text || '').trim();
+  }
+  throw new Error('No ChatGPT transcription model answered');
+}
+async function openaiDirect(key, input, context) {
+  let said = input.text || '';
+  if (input.audio) { vStatus('Listening back…'); said = await openaiTranscribe(key, input.audio.data); if (!said) throw new Error('I didn’t catch anything — try again.'); vStatus('Thinking…'); }
+  const rules = VOICE_RULES + '\nReturn every field of every action; use null for fields that do not apply. Date as YYYY-MM-DD, times as HH:MM. Do not think out loud in any field.';
+  const user = 'Plan context (JSON):\n' + JSON.stringify(context) + '\n\nJordan said: ' + said;
+  const models = oaModels(), mode = S.settings.voiceCareful ? 'careful' : 'fast', saved = lsGet(OPENAI_COMBO);
+  let mi = saved && saved.mode === mode && models[saved.mi] === saved.model ? saved.mi : 0, plain = false;
+  for (let tries = 0; mi < models.length && tries < 10; tries++) {
+    const m = models[mi], reasoning = /^gpt-5|^o\d/.test(m);
+    const body = { model: m, messages: [{ role: 'system', content: rules }, { role: 'user', content: user }], response_format: { type: 'json_schema', json_schema: { name: 'planner_change', strict: true, schema: OA_SCHEMA } } };
+    if (reasoning && !plain) body.reasoning_effort = 'minimal'; else if (!reasoning) body.temperature = 0.2;
+    const { r, txt } = await oaFetch(key, 'chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    oaFail(r, txt);
+    if (r.status === 400 && reasoning && !plain && /reasoning/i.test(txt)) { plain = true; continue; }
+    if (r.status === 404 || r.status === 400 || r.status === 403) { mi++; plain = false; continue; }
+    if (r.status >= 500) { if (mi < models.length - 1) { mi++; continue; } throw new Error('ChatGPT is having trouble — try again'); }
+    if (!r.ok) throw new Error('ChatGPT ' + r.status);
+    lsSet(OPENAI_COMBO, { mode, mi, model: m });
+    const msg = JSON.parse(txt).choices[0].message;
+    if (msg.refusal) return { heard: said, reply: msg.refusal, actions: [] };
+    const agent = JSON.parse(msg.content);
+    agent.actions = (agent.actions || []).map(a => Object.fromEntries(Object.entries(a).filter(([, v]) => v !== null)));
+    agent.heard = agent.heard || said; agent._model = m;
+    return agent;
+  }
+  throw new Error('No ChatGPT model answered');
+}
+
 async function askAgent(input) {
   if (voice.busy) return; voice.busy = true;
   const t0 = Date.now(); vStatus('Thinking…'); $('#vOut') && ($('#vOut').innerHTML = '');
-  const tick = setInterval(() => vStatus(`Thinking… ${Math.round((Date.now() - t0) / 1000)}s`), 1000);
+  const tick = setInterval(() => { const el = $('#vStatus'); if (el && /^(Thinking|Listening back)/.test(el.textContent)) vStatus(`${el.textContent.split('…')[0]}… ${Math.round((Date.now() - t0) / 1000)}s`); }, 1000);
   const context = agentContext();
   try {
     let agent = null, key = null;
-    try { key = await voiceKey(); } catch (e) { if (e.message === 'nokey') throw e; }
-    if (key) { try { agent = await geminiDirect(key, input, context); } catch (e) { if (['rate', 'apikey'].includes(e.message) || !sync.cfg) throw e; console.warn('direct Gemini failed, using the Sheet relay', e); } }
+    if (provider() === 'openai') {
+      const ok = await openaiKey(); if (!ok) throw new Error('nokey_openai');
+      agent = await openaiDirect(ok, input, context);
+    }
+    if (!agent) try { key = await voiceKey(); } catch (e) { if (e.message === 'nokey') throw e; }
+    if (!agent && key) { try { agent = await geminiDirect(key, input, context); } catch (e) { if (['rate', 'apikey'].includes(e.message) || !sync.cfg) throw e; console.warn('direct Gemini failed, using the Sheet relay', e); } }
     if (!agent) { if (!sync.cfg) throw new Error('nokey'); agent = (await api('POST', { op: 'agent', ...input, context })).agent || {}; agent._relay = true; }
     agent._secs = (Date.now() - t0) / 1000;
     clearInterval(tick); showAgent(agent);
   } catch (e) {
     clearInterval(tick);
     if (e.message === 'apikey') { try { localStorage.removeItem(AGENT_CFG_KEY); } catch (x) { } }
-    const msg = { nokey: 'The assistant needs a Gemini key — see Settings & backup → Voice assistant.', rate: 'Gemini is busy right now. Try again in a minute.', apikey: 'Gemini didn’t accept the key. Check it in Settings & backup → Voice assistant.' }[e.message] || (e.name === 'AbortError' ? 'That took too long — try again.' : (e.message || 'Something went wrong.'));
+    const msg = { nokey_openai: 'ChatGPT needs an OpenAI key — see Settings & backup → Voice assistant.', apikey_openai: 'OpenAI didn’t accept the key. Check it in Settings & backup → Voice assistant.', quota_openai: 'The OpenAI account has no credit left — add some at platform.openai.com → Billing.', nokey: 'The assistant needs a Gemini key — see Settings & backup → Voice assistant.', rate: 'Gemini is busy right now. Try again in a minute.', apikey: 'Gemini didn’t accept the key. Check it in Settings & backup → Voice assistant.' }[e.message] || (e.name === 'AbortError' ? 'That took too long — try again.' : (e.message || 'Something went wrong.'));
     vStatus(msg);
   } finally { voice.busy = false; clearInterval(tick); }
 }
@@ -2121,7 +2211,7 @@ function applyVoice(pick, a) {
 }
 function showAgent(a) {
   const plan = planActions(a.actions), ok = plan.filter(p => !p.bad), bad = plan.filter(p => p.bad);
-  vStatus(a._secs ? `Answered in ${a._secs.toFixed(1)}s${a._relay ? ' (through the Sheet — update the Sheet script or add a key on this device to speed up)' : ''}` : '');
+  vStatus(a._secs ? `${a._model && /^gpt|^o\d/.test(a._model) ? 'ChatGPT' : 'Gemini'} answered in ${a._secs.toFixed(1)}s${a._relay ? ' (through the Sheet — update the Sheet script or add a key on this device to speed up)' : ''}` : '');
   const out = $('#vOut'); if (!out) return;
   if (S.settings.voiceAuto !== false && ok.length && !bad.length && !ok.some(p => p.danger)) { speak(a.reply); return applyVoice(ok, a); }   // nothing risky → save at once, Undo stays available
   out.innerHTML = `${a.heard ? `<p class="small sans muted" style="margin:0 0 .3rem">You said: “${esc(a.heard)}”</p>` : ''}
@@ -2137,7 +2227,12 @@ function showAgent(a) {
 /* ----- settings card ----- */
 function voiceCard() {
   return `<div class="card stack" style="grid-column:1/-1"><div class="row between"><h3>Voice assistant</h3><button class="btn sm primary" data-act="voiceTry">🎙 Try it</button></div>
-    <p class="small" style="margin:0">Tap 🎙 on any screen and say what you want — “Move yoga to 4 tomorrow”, “Dentist Tuesday at 10”, “I paid the phone bill, 45 dollars”, “What's on Thursday?”. Changes save right away with an Undo button; removals always ask first. It uses Gemini with your own key.</p>
+    <p class="small" style="margin:0">Tap 🎙 on any screen and say what you want — “Move yoga to 4 tomorrow”, “Dentist Tuesday at 10”, “I paid the phone bill, 45 dollars”, “What's on Thursday?”. Changes save right away with an Undo button; removals always ask first. It uses ${provider() === 'openai' ? 'ChatGPT (OpenAI)' : 'Gemini'} with your own key.</p>
+    <div class="row"><label class="f">Assistant<select data-b="settings.voiceProvider" data-rerender="1"><option value="openai" ${provider() === 'openai' ? 'selected' : ''}>ChatGPT (OpenAI)</option><option value="gemini" ${provider() === 'gemini' ? 'selected' : ''}>Gemini (Google)</option></select></label></div>
+    ${provider() === 'openai' ? `<div class="card flat stack small" style="padding:.7rem .9rem"><b>ChatGPT key on this device ${localOpenAIKey() ? '✓' : ''}</b>
+      <p style="margin:0">1. Sign in at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> → <b>Create new secret key</b> → copy it (starts with <code>sk-</code>). 2. Add a little credit under <b>Billing</b> — the API is pay-as-you-go and separate from a ChatGPT Plus subscription. 3. Paste the key here on each device:</p>
+      <div class="row"><input id="oaKey" type="password" class="grow" placeholder="sk-…" value="${esc(localOpenAIKey())}" autocomplete="off"><button class="btn sm primary" data-act="saveOpenAIKey">Save</button></div>
+      <p class="tiny muted sans" style="margin:0">Stored only on this device. Each request costs a fraction of a cent. OpenAI doesn't train on API requests by default.</p></div>` : ''}
     <details class="disc"><summary>Turn it on (2 minutes, on a computer)</summary><div class="in small stack">
       <p><b>1.</b> Signed in as the Sheet's owner, open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and create an API key. Copy it.</p>
       <p><b>2.</b> Reload the Google Sheet. In its menu bar, open <b>Life Garden → Set voice assistant key…</b>, paste the key, OK. It tests the key and tells you if it works.</p>
@@ -2153,5 +2248,6 @@ function voiceCard() {
 ACT.voiceTry = () => openVoice(false);
 ACT.saveVoiceKey = () => { const v = $('#vKey').value.trim(); try { if (v) localStorage.setItem(LOCAL_KEY, v); else localStorage.removeItem(LOCAL_KEY); localStorage.removeItem(COMBO_KEY); } catch (e) { } render(); toast(v ? 'Key saved on this device' : 'Key removed from this device'); };
 setTimeout(() => { if (sync.cfg || localVoiceKey()) voiceKey().catch(() => { }); }, 2500);   // warm up so the first question doesn't wait
+ACT.saveOpenAIKey = () => { const v = $('#oaKey').value.trim(); try { if (v) localStorage.setItem(OPENAI_LOCAL, v); else localStorage.removeItem(OPENAI_LOCAL); localStorage.removeItem(OPENAI_COMBO); } catch (e) { } if (v && S.settings.voiceProvider !== 'openai') commit('settings', 'voice provider', st => { st.voiceProvider = 'openai'; }); render(); toast(v ? 'ChatGPT key saved on this device' : 'ChatGPT key removed from this device'); };
 </script>
 </body></html>
