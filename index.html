@@ -10,6 +10,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Life Garden">
+<link rel="preconnect" href="https://generativelanguage.googleapis.com" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -1843,7 +1844,7 @@ async function startRecording(onLevel, onAutoStop) {
     onLevel && onLevel(rms);
     const now = Date.now();
     if (rms > 0.02) { heard = true; quietSince = 0; lastLoud = chunks.length; } else if (heard && !quietSince) quietSince = now;
-    if ((heard && quietSince && now - quietSince > 1100) || now - t0 > 30000) onAutoStop && onAutoStop();
+    if ((heard && quietSince && now - quietSince > 800) || now - t0 > 30000) onAutoStop && onAutoStop();
   };
   src.connect(proc); proc.connect(ctx.destination);
   return {
@@ -1964,7 +1965,7 @@ function planActions(actions) {
 
 /* ----- the panel ----- */
 function openVoice(autoStart) {
-  if (!sync.cfg) return openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+  if (!sync.cfg && !localVoiceKey()) return openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="mb small"><p>The voice assistant runs through your Google Sheet, so connect it first. Then add a Gemini key in the Sheet's script (Settings & backup → Voice assistant).</p><p class="muted">Until then you can still speak into the quick-add bar on Today — tap the microphone on the iPhone keyboard.</p></div>
     <div class="mf"><button class="btn" data-act="close">Close</button><button class="btn primary" id="vGo">Settings</button></div>`, m => { $('#vGo', m).onclick = () => { closeModal(); go('backup'); }; });
   openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
@@ -1977,7 +1978,7 @@ function openVoice(autoStart) {
     $('#vMic', m).onclick = () => voice.rec ? finishRecording() : beginRecording();
     $('#vForm', m).onsubmit = e => { e.preventDefault(); const t = $('#vText', m).value.trim(); if (t) { unlockSpeech(); askAgent({ text: t }); } };
     if (autoStart && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) beginRecording();
-    agentConfig().catch(() => { });
+    voiceKey().catch(() => { });
   });
   dlg().addEventListener('close', () => { if (voice.rec) { voice.rec.cancel(); voice.rec = null; } try { speechSynthesis.cancel(); } catch (e) { } }, { once: true });
 }
@@ -2001,49 +2002,95 @@ async function finishRecording() {
   if (!heard || seconds < 0.6) { vStatus('I didn’t catch anything — tap the mic and try again.'); return; }
   askAgent({ audio: { mime: 'audio/wav', data: toBase64(wav) } });
 }
-const AGENT_CFG_KEY = 'lifegarden.agentcfg';
-async function agentConfig() {
-  try { const c = JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null'); if (c && c.url === sync.cfg.url && Date.now() - c.at < 7 * 864e5) return c.none ? null : c.cfg; } catch (e) { }
+const VOICE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    heard: { type: 'STRING', description: 'What Jordan said, transcribed (or the typed text).' },
+    reply: { type: 'STRING', description: 'Short, warm spoken reply: one or two sentences.' },
+    actions: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          type: { type: 'STRING', enum: ['add_block', 'update_block', 'delete_block', 'add_step', 'complete_step', 'add_money'] },
+          id: { type: 'STRING', description: 'Existing block or step id from the context. Never invent one.' },
+          title: { type: 'STRING', description: 'Only the short name, e.g. "Dentist". Never dates, times, notes or reasoning.' },
+          date: { type: 'STRING', description: 'YYYY-MM-DD' },
+          start: { type: 'STRING', description: '24-hour HH:MM' },
+          end: { type: 'STRING', description: '24-hour HH:MM, after start, same day (24:00 = midnight)' },
+          kind: { type: 'STRING', enum: ['flexible', 'fixed', 'protected'] },
+          done: { type: 'BOOLEAN' },
+          area: { type: 'STRING' },
+          money_type: { type: 'STRING', enum: ['income', 'expense'] },
+          amount: { type: 'NUMBER' },
+          settled: { type: 'BOOLEAN', description: 'true only if she says it was already paid or received' },
+        },
+        required: ['type'],
+        propertyOrdering: ['type', 'id', 'date', 'start', 'end', 'kind', 'done', 'money_type', 'amount', 'settled', 'area', 'title'],
+      },
+    },
+  },
+  required: ['heard', 'reply', 'actions'],
+};
+const VOICE_RULES = [
+  'You are the voice assistant inside Jordan\'s Life Garden, her personal day planner. You help her change her plan by voice.',
+  'Use only the plan context provided. Dates are YYYY-MM-DD, times are 24-hour HH:MM in her local time zone.',
+  'Propose only the changes she actually asked for. Never invent ids: to change, move, finish or remove something, use the id of the matching item in the context. If several items could match or a needed detail is missing, ask one short question in reply and return no actions.',
+  'New blocks: default length 60 minutes; appointments, classes, shifts and anything with another person at a set time are "fixed"; travel, meals, sleep and couple time are "protected"; everything else is "flexible". Use the title she would write herself, without dates or times in it.',
+  'To move a block, use update_block with its id and the new date/start/end, keeping its length unless she says otherwise. "Mark X done" is update_block with done=true. To-dos without a time are add_step (date only if she gave a day).',
+  'Money: add_money only when she states an amount. It is an estimate unless she says it was already paid or received.',
+  'Questions about her plan ("what\'s on Thursday?") get a spoken answer and no actions.',
+  'Reply in one or two short, plain sentences suitable to be read aloud. Do not repeat every detail of the change; the app shows it on screen. Never give medical, legal or financial advice.',
+].join('\n');
+
+/* ----- talking to Gemini: straight from this device, with the fastest model and setting that works ----- */
+const AGENT_CFG_KEY = 'lifegarden.agentcfg', LOCAL_KEY = 'lifegarden.geminikey', COMBO_KEY = 'lifegarden.voicecombo';
+const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { } };
+const localVoiceKey = () => { try { return localStorage.getItem(LOCAL_KEY) || ''; } catch (e) { return ''; } };
+async function voiceKey() {
+  const lk = localVoiceKey(); if (lk) return lk;
+  if (!sync.cfg) return null;
+  const c = lsGet(AGENT_CFG_KEY);
+  if (c && c.url === sync.cfg.url) { if (c.key && Date.now() - c.at < 30 * 864e5) return c.key; if (c.none && Date.now() - c.at < 6 * 36e5) return null; }
   const r = await api('POST', { op: 'agentConfig' });
-  const cfg = r.agentConfig || null;                                // older scripts don't offer it → use the relay
-  try { localStorage.setItem(AGENT_CFG_KEY, JSON.stringify({ url: sync.cfg.url, at: Date.now(), cfg, none: !cfg, model: null })); } catch (e) { }
-  return cfg;
+  const key = (r.agentConfig && r.agentConfig.key) || null;           // an older Sheet script doesn't share it → relay
+  lsSet(AGENT_CFG_KEY, { url: sync.cfg.url, at: Date.now(), key, none: !key });
+  return key;
 }
-function rememberModel(m) { try { const c = JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null'); if (c) { c.model = m; localStorage.setItem(AGENT_CFG_KEY, JSON.stringify(c)); } } catch (e) { } }
-function preferredModel() { try { return (JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null') || {}).model; } catch (e) { return null; } }
+const voiceModels = () => (S.settings.voiceCareful ? [] : ['gemini-flash-lite-latest']).concat(['gemini-3.6-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash']);
+const thinkOptions = m => /gemini-2\./.test(m) ? [{ thinkingBudget: 0 }, null] : [{ thinkingLevel: 'minimal' }, { thinkingLevel: 'low' }, { thinkingBudget: 0 }, null];
 function tidySchema(schema) {
-  const s = JSON.parse(JSON.stringify(schema)), item = s.properties && s.properties.actions && s.properties.actions.items;
-  if (item && item.properties) {
-    item.properties.title = { type: 'STRING', description: 'Only the short name of the block or step, exactly as she would write it (e.g. "Dentist"). Never put dates, times, notes or reasoning here.' };
-    item.propertyOrdering = ['type', 'id', 'date', 'start', 'end', 'kind', 'done', 'money_type', 'amount', 'settled', 'area', 'title'];
-  }
+  const s = JSON.parse(JSON.stringify(schema)), item = s.properties.actions.items;
+  item.properties.title = { type: 'STRING', description: 'Only the short name of the block or step, exactly as she would write it (e.g. "Dentist"). Never put dates, times, notes or reasoning here.' };
+  item.propertyOrdering = ['type', 'id', 'date', 'start', 'end', 'kind', 'done', 'money_type', 'amount', 'settled', 'area', 'title'];
   s.propertyOrdering = ['heard', 'actions', 'reply'];
   return s;
 }
-async function geminiDirect(cfg, input, context) {
+async function geminiDirect(key, input, context) {
   const parts = [];
   if (input.audio) parts.push({ inlineData: { mimeType: input.audio.mime, data: input.audio.data } });
   parts.push({ text: 'Plan context (JSON):\n' + JSON.stringify(context) + (input.text ? '\n\nJordan typed: ' + input.text : "\n\nJordan's request is in the audio.") });
-  const rules = cfg.rules + '\nFill every field of an action separately: date as YYYY-MM-DD, start/end as HH:MM, and a short title. Do not think out loud in any field.';
-  const base = { systemInstruction: { parts: [{ text: rules }] }, contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: tidySchema(cfg.schema), temperature: 0.2 } };
-  const pref = preferredModel(), models = pref ? [pref, ...cfg.models.filter(m => m !== pref)] : cfg.models;
-  for (const m of models) {
-    for (const thinking of [true, false]) {
-      const body = JSON.parse(JSON.stringify(base)); if (thinking) body.generationConfig.thinkingConfig = /gemini-2\./.test(m) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' };
-      const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 30000);
-      let r; try { r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.key }, body: JSON.stringify(body), signal: ctrl.signal }); } finally { clearTimeout(to); }
-      const txt = await r.text();
-      if (r.status === 400 && thinking && /thinking/i.test(txt)) continue;      // model doesn't take that setting → retry plainly
-      if (r.status === 400 && /propertyOrdering/i.test(txt) && !base._plain) { base._plain = 1; base.generationConfig.responseSchema = cfg.schema; continue; }
-      if (r.status === 404) break;                                             // try the next model
-      if (r.status === 429) throw new Error('rate');
-      if (r.status === 401 || r.status === 403 || (r.status === 400 && /API key/i.test(txt))) throw new Error('apikey');
-      if (!r.ok) throw new Error('Gemini ' + r.status);
-      const j = JSON.parse(txt); rememberModel(m);
-      return JSON.parse(j.candidates[0].content.parts.map(p => p.text || '').join(''));
-    }
+  const rules = VOICE_RULES + '\nFill every field of an action separately: date as YYYY-MM-DD, start/end as HH:MM, and a short title. Do not think out loud in any field. Keep "reply" to one short sentence.';
+  const mode = S.settings.voiceCareful ? 'careful' : 'fast', models = voiceModels(), saved = lsGet(COMBO_KEY);
+  let mi = 0, ti = 0; if (saved && saved.mode === mode && models[saved.mi] === saved.model) { mi = saved.mi; ti = saved.ti; }
+  for (let tries = 0; mi < models.length && tries < 12; tries++) {
+    const m = models[mi], opts = thinkOptions(m), think = opts[Math.min(ti, opts.length - 1)];
+    const body = { systemInstruction: { parts: [{ text: rules }] }, contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: tidySchema(VOICE_SCHEMA), temperature: 0.2 } };
+    if (think) body.generationConfig.thinkingConfig = think;
+    const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 20000);
+    let r; try { r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body), signal: ctrl.signal }); } finally { clearTimeout(to); }
+    const txt = await r.text();
+    if (r.status === 401 || r.status === 403 || (r.status === 400 && /API key/i.test(txt))) throw new Error('apikey');
+    if (r.status === 400 && ti < opts.length - 1) { ti++; continue; }       // this model doesn't take that speed setting → next one
+    if (r.status === 404 || r.status === 400) { mi++; ti = 0; continue; }   // model not offered → next model
+    if (r.status === 429 || r.status >= 500) { if (mi < models.length - 1) { mi++; ti = 0; continue; } throw new Error(r.status === 429 ? 'rate' : 'Gemini is having trouble — try again'); }
+    if (!r.ok) throw new Error('Gemini ' + r.status);
+    lsSet(COMBO_KEY, { mode, mi, ti, model: m });
+    const agent = JSON.parse(JSON.parse(txt).candidates[0].content.parts.map(p => p.text || '').join('')); agent._model = m;
+    return agent;
   }
-  throw new Error('no model available');
+  throw new Error('No Gemini model answered');
 }
 async function askAgent(input) {
   if (voice.busy) return; voice.busy = true;
@@ -2051,22 +2098,32 @@ async function askAgent(input) {
   const tick = setInterval(() => vStatus(`Thinking… ${Math.round((Date.now() - t0) / 1000)}s`), 1000);
   const context = agentContext();
   try {
-    let agent = null, cfg = null;
-    try { cfg = await agentConfig(); } catch (e) { if (e.message === 'nokey') throw e; }
-    if (cfg) { try { agent = await geminiDirect(cfg, input, context); } catch (e) { if (['rate', 'apikey'].includes(e.message)) throw e; console.warn('direct Gemini failed, using the Sheet relay', e); } }
-    if (!agent) agent = (await api('POST', { op: 'agent', ...input, context })).agent || {};
+    let agent = null, key = null;
+    try { key = await voiceKey(); } catch (e) { if (e.message === 'nokey') throw e; }
+    if (key) { try { agent = await geminiDirect(key, input, context); } catch (e) { if (['rate', 'apikey'].includes(e.message) || !sync.cfg) throw e; console.warn('direct Gemini failed, using the Sheet relay', e); } }
+    if (!agent) { if (!sync.cfg) throw new Error('nokey'); agent = (await api('POST', { op: 'agent', ...input, context })).agent || {}; agent._relay = true; }
+    agent._secs = (Date.now() - t0) / 1000;
     clearInterval(tick); showAgent(agent);
   } catch (e) {
     clearInterval(tick);
-    if (e.message === 'nokey' || e.message === 'apikey') try { localStorage.removeItem(AGENT_CFG_KEY); } catch (x) { }
-    const msg = { nokey: 'The assistant needs a Gemini key in the Sheet’s script — see Settings & backup → Voice assistant.', rate: 'Gemini is busy right now. Try again in a minute.', apikey: 'Gemini didn’t accept the key. Check GEMINI_API_KEY in the Sheet’s script settings.' }[e.message] || (e.name === 'AbortError' ? 'That took too long — try again.' : (e.message || 'Something went wrong.'));
+    if (e.message === 'apikey') { try { localStorage.removeItem(AGENT_CFG_KEY); } catch (x) { } }
+    const msg = { nokey: 'The assistant needs a Gemini key — see Settings & backup → Voice assistant.', rate: 'Gemini is busy right now. Try again in a minute.', apikey: 'Gemini didn’t accept the key. Check it in Settings & backup → Voice assistant.' }[e.message] || (e.name === 'AbortError' ? 'That took too long — try again.' : (e.message || 'Something went wrong.'));
     vStatus(msg);
   } finally { voice.busy = false; clearInterval(tick); }
 }
+function applyVoice(pick, a) {
+  const groups = {}; for (const p of pick) (groups[p.k] = groups[p.k] || []).push(p.fn);
+  for (const [k, fns] of Object.entries(groups)) commit(k, 'voice change', root => fns.forEach(f => f(root)), { render: false });
+  closeModal(); render();
+  const firstDate = (a.actions || []).map(x => x.date && parseDateLoose(x.date)).find(Boolean);
+  toast(pick.length === 1 ? pick[0].text : `Done — ${pick.length} changes`, 'Undo', () => { for (let i = 0; i < Object.keys(groups).length; i++) undo(); }, 9000);
+  if (firstDate && firstDate !== R.date && R.view === 'today') setTimeout(() => toast(`See ${shortDay(firstDate)}?`, 'Go', () => go('today', firstDate)), 400);
+}
 function showAgent(a) {
   const plan = planActions(a.actions), ok = plan.filter(p => !p.bad), bad = plan.filter(p => p.bad);
-  vStatus('');
+  vStatus(a._secs ? `Answered in ${a._secs.toFixed(1)}s${a._relay ? ' (through the Sheet — update the Sheet script or add a key on this device to speed up)' : ''}` : '');
   const out = $('#vOut'); if (!out) return;
+  if (S.settings.voiceAuto !== false && ok.length && !bad.length && !ok.some(p => p.danger)) { speak(a.reply); return applyVoice(ok, a); }   // nothing risky → save at once, Undo stays available
   out.innerHTML = `${a.heard ? `<p class="small sans muted" style="margin:0 0 .3rem">You said: “${esc(a.heard)}”</p>` : ''}
     ${a.reply ? `<p style="margin:.2rem 0 .6rem;font-size:1.05rem">${esc(a.reply)}</p>` : ''}
     ${ok.length ? `<div class="card flat" style="padding:.5rem .7rem">${ok.map((p, i) => `<label class="row small" style="flex-wrap:nowrap;padding:.35rem 0;align-items:flex-start;gap:.5rem;${p.danger ? 'color:var(--bad)' : ''}"><input type="checkbox" data-vi="${i}" checked style="margin-top:.2rem"> <span>${esc(p.text)}</span></label>`).join('')}</div>
@@ -2074,29 +2131,27 @@ function showAgent(a) {
     ${bad.length ? `<p class="tiny sans" style="color:var(--warn)">${bad.map(b => esc(b.bad)).join('<br>')}</p>` : ''}`;
   speak(a.reply);
   if ($('#vAgain')) $('#vAgain').onclick = () => { out.innerHTML = ''; beginRecording(); };
-  if ($('#vApply')) $('#vApply').onclick = () => {
-    const pick = $$('[data-vi]', out).filter(c => c.checked).map(c => ok[+c.dataset.vi]); if (!pick.length) return;
-    const groups = {}; for (const p of pick) (groups[p.k] = groups[p.k] || []).push(p.fn);
-    for (const [k, fns] of Object.entries(groups)) commit(k, 'voice change', root => fns.forEach(f => f(root)), { render: false });
-    closeModal(); render();
-    const firstDate = (a.actions || []).map(x => x.date && parseDateLoose(x.date)).find(Boolean);
-    toast(`Done — ${pick.length} change${pick.length > 1 ? 's' : ''}`, 'Undo', () => { for (let i = 0; i < Object.keys(groups).length; i++) undo(); }, 8000);
-    if (firstDate && firstDate !== R.date && R.view === 'today') setTimeout(() => toast(`See ${shortDay(firstDate)}?`, 'Go', () => go('today', firstDate)), 400);
-  };
+  if ($('#vApply')) $('#vApply').onclick = () => { const pick = $$('[data-vi]', out).filter(c => c.checked).map(c => ok[+c.dataset.vi]); if (pick.length) applyVoice(pick, a); };
 }
 
 /* ----- settings card ----- */
 function voiceCard() {
   return `<div class="card stack" style="grid-column:1/-1"><div class="row between"><h3>Voice assistant</h3><button class="btn sm primary" data-act="voiceTry">🎙 Try it</button></div>
-    <p class="small" style="margin:0">Tap 🎙 on any screen and say what you want — “Move yoga to 4 tomorrow”, “Dentist Tuesday at 10”, “I paid the phone bill, 45 dollars”, “What's on Thursday?”. You'll see each change before it's saved. It uses Gemini through your own Google Sheet script.</p>
+    <p class="small" style="margin:0">Tap 🎙 on any screen and say what you want — “Move yoga to 4 tomorrow”, “Dentist Tuesday at 10”, “I paid the phone bill, 45 dollars”, “What's on Thursday?”. Changes save right away with an Undo button; removals always ask first. It uses Gemini with your own key.</p>
     <details class="disc"><summary>Turn it on (2 minutes, on a computer)</summary><div class="in small stack">
       <p><b>1.</b> Signed in as the Sheet's owner, open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and create an API key. Copy it.</p>
       <p><b>2.</b> Reload the Google Sheet. In its menu bar, open <b>Life Garden → Set voice assistant key…</b>, paste the key, OK. It tests the key and tells you if it works.</p>
       <p class="tiny muted sans">Set up the Sheet before today? Paste the latest script first (<button class="btn sm" data-act="copyScript">Copy the script</button> — it keeps your passcode), then <b>Deploy → Manage deployments → Edit → Version: New version</b>.</p>
       <p class="tiny muted sans">Privacy: on Gemini's free tier Google may use requests to improve its products; turning on billing in AI Studio stops that. Each request sends the recording plus about ten days of the plan, and typically costs well under a cent on the paid tier.</p>
     </div></details>
-    <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label></div>`;
+    <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
+    <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
+    <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
+    <details class="disc"><summary>Speed: key on this device ${localVoiceKey() ? '✓' : ''}</summary><div class="in small stack"><p style="margin:0">For the fastest answers this device talks to Gemini directly. It normally fetches the key from the Sheet script; if the script hasn't been updated, paste the Gemini key here instead. It is stored only on this device.</p>
+      <div class="row"><input id="vKey" type="password" class="grow" placeholder="AIza…" value="${esc(localVoiceKey())}" autocomplete="off"><button class="btn sm" data-act="saveVoiceKey">Save</button></div></div></details></div>`;
 }
 ACT.voiceTry = () => openVoice(false);
+ACT.saveVoiceKey = () => { const v = $('#vKey').value.trim(); try { if (v) localStorage.setItem(LOCAL_KEY, v); else localStorage.removeItem(LOCAL_KEY); localStorage.removeItem(COMBO_KEY); } catch (e) { } render(); toast(v ? 'Key saved on this device' : 'Key removed from this device'); };
+setTimeout(() => { if (sync.cfg || localVoiceKey()) voiceKey().catch(() => { }); }, 2500);   // warm up so the first question doesn't wait
 </script>
 </body></html>
