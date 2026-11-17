@@ -1874,11 +1874,22 @@ function agentContext() {
 }
 /* ----- turn the assistant's proposals into checked, human-readable changes ----- */
 const shortDay = d => fmtDate(d, { weekday: 'short', month: 'short', day: 'numeric' });
+/* Gemini sometimes sends "2026-11-16T06:30:00", "6:30 AM", "0630" or "30 minutes" — read them all. */
+function agentTime(v, start) {
+  if (v == null || v === '') return null;
+  const s = String(v).trim(), direct = parseTimeLoose(s); if (direct != null) return direct;
+  let m = s.match(/(?:^|[T\s])(\d{1,2}):(\d{2})(?::\d{2})?(?:\.\d+)?\s*([ap]\.?m\.?)?/i);
+  if (m) return parseTimeLoose(`${m[1]}:${m[2]}${m[3] ? ' ' + m[3].replace(/\./g, '') : ''}`);
+  if ((m = s.match(/^(\d{2})(\d{2})$/))) return +m[1] * 60 + +m[2];
+  if (start != null && (m = s.match(/(\d+(?:\.\d+)?)\s*(h|hour|hr|m|min)/i))) return Math.min(1440, start + Math.round(/^h/i.test(m[2]) ? +m[1] * 60 : +m[1]));
+  return null;
+}
 function planActions(actions) {
   const out = [];
   for (const a of actions || []) {
     const blk = a.id && S.blocks.find(b => b.id === a.id), task = a.id && S.tasks.find(t => t.id === a.id);
-    const date = a.date ? parseDateLoose(a.date) : null, st = a.start ? parseTimeLoose(a.start) : null; let en = a.end ? parseTimeLoose(a.end) : null;
+    const date = a.date ? parseDateLoose(a.date) : (a.start && parseDateLoose(String(a.start).split('T')[0])) || null;
+    const st = agentTime(a.start); let en = agentTime(a.end, st);
     if (a.type === 'add_block') {
       if (!a.title || !date || st == null) { out.push({ bad: `Couldn't add “${a.title || 'a block'}” — the day or time was unclear.` }); continue; }
       if (en == null || en <= st) en = Math.min(1440, st + 60);
