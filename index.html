@@ -313,7 +313,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.17-d';
+const APP_VERSION = '2026.11.17-e';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -1810,10 +1810,13 @@ document.body.insertAdjacentHTML('beforeend', '<button id="voiceFab" aria-label=
 $('#voiceFab').onclick = () => openVoice(true);
 
 /* ----- microphone → 16 kHz mono WAV (Web Audio; avoids MediaRecorder quirks in iPhone Home Screen apps) ----- */
+function audioCtx() {   // one per conversation, created from a tap so iPhone lets it run
+  if (!voice.ctx || voice.ctx.state === 'closed') { const AC = window.AudioContext || window.webkitAudioContext; voice.ctx = new AC(); }
+  return voice.ctx;
+}
 async function startRecording(onLevel, onAutoStop) {
+  const ctx = audioCtx(); if (ctx.state === 'suspended') await ctx.resume();
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-  const AC = window.AudioContext || window.webkitAudioContext; const ctx = new AC();
-  if (ctx.state === 'suspended') await ctx.resume();
   const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
   let heard = false, quietSince = 0, lastLoud = 0; const t0 = Date.now();
   proc.onaudioprocess = e => {
@@ -1822,18 +1825,18 @@ async function startRecording(onLevel, onAutoStop) {
     onLevel && onLevel(rms);
     const now = Date.now();
     if (rms > 0.02) { heard = true; quietSince = 0; lastLoud = chunks.length; } else if (heard && !quietSince) quietSince = now;
-    if ((heard && quietSince && now - quietSince > 800) || now - t0 > 30000) onAutoStop && onAutoStop();
+    if ((heard && quietSince && now - quietSince > 800) || (!heard && now - t0 > 8000) || now - t0 > 30000) onAutoStop && onAutoStop();
   };
   src.connect(proc); proc.connect(ctx.destination);
   return {
     async stop() {
       try { src.disconnect(); proc.disconnect(); } catch (e) { }
       stream.getTracks().forEach(t => t.stop());
-      const rate = ctx.sampleRate; try { await ctx.close(); } catch (e) { }
+      const rate = ctx.sampleRate;
       const keep = heard ? chunks.slice(0, Math.min(chunks.length, lastLoud + 3)) : chunks;   // drop trailing silence
       return { wav: encodeWav(downsample(keep, rate, 16000), 16000), seconds: keep.length * 4096 / rate, heard };
     },
-    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } stream.getTracks().forEach(t => t.stop()); ctx.close().catch(() => { }); },
+    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } stream.getTracks().forEach(t => t.stop()); },
   };
 }
 function downsample(chunks, from, to) {
@@ -1863,16 +1866,17 @@ function unlockSpeech() {   // called from a tap, so iPhone allows audio a momen
   try { player.src = SILENT; const p = player.play(); p && p.catch(() => { }); } catch (e) { }
 }
 function speakSystem(text, rate) {
-  if (!('speechSynthesis' in window)) return;
-  try {
+  if (!('speechSynthesis' in window)) return Promise.resolve();
+  return new Promise(done => { try {
     speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = rate;
+    const est = setTimeout(done, 1500 + text.length * 90 / rate); u.onend = u.onerror = () => { clearTimeout(est); done(); };
     const want = String(S.settings.speakVoice || '').replace(/^sys:/, ''), v = want && sysVoices().find(x => x.voiceURI === want || x.name === want);
     if (v) { u.voice = v; u.lang = v.lang; }
     speechSynthesis.speak(u);
-  } catch (e) { }
+  } catch (e) { done(); } });
 }
 async function speak(text, force) {
-  if ((S.settings.speakReplies === false && !force) || !text) return;
+  if ((S.settings.speakReplies === false && !force) || !text) return Promise.resolve();
   const choice = String(S.settings.speakVoice || ''), rate = +S.settings.speakRate || 1;
   if (choice.startsWith('oa:')) {
     const key = localOpenAIKey() || await openaiKey().catch(() => null);
@@ -1887,15 +1891,16 @@ async function speak(text, force) {
           if (!r.ok) break;
           const url = URL.createObjectURL(await r.blob());
           try { speechSynthesis.cancel(); } catch (e) { }
-          player.pause(); player.src = url; await player.play(); player.onended = () => URL.revokeObjectURL(url);
-          return;
+          player.pause(); player.src = url;
+          const ended = new Promise(done => { player.onended = player.onerror = () => { URL.revokeObjectURL(url); done(); }; voice.stopPlayer = done; });
+          await player.play(); return ended;
         } catch (e) { break; }
       }
     }
   }
-  speakSystem(text, rate);                                     // fallback: the device's own voice
+  return speakSystem(text, rate);                              // fallback: the device's own voice
 }
-function stopSpeaking() { try { speechSynthesis.cancel(); } catch (e) { } try { player.pause(); } catch (e) { } }
+function stopSpeaking() { try { speechSynthesis.cancel(); } catch (e) { } try { player.pause(); } catch (e) { } voice.stopPlayer && voice.stopPlayer(); }
 
 /* ----- what the assistant gets to see: about ten days of the plan and open next steps ----- */
 function agentContext() {
@@ -1997,12 +2002,13 @@ function openVoice(autoStart) {
       <form id="vForm" class="row" autocomplete="off"><input id="vText" class="grow" placeholder="…or type it"><button class="btn">Send</button></form>
       <div id="vOut"></div>
     </div>`, m => {
-    $('#vMic', m).onclick = () => voice.rec ? finishRecording() : beginRecording();
+    $('#vMic', m).onclick = () => { stopSpeaking(); voice.rec ? finishRecording() : beginRecording(); };
     $('#vForm', m).onsubmit = e => { e.preventDefault(); const t = $('#vText', m).value.trim(); if (t) { unlockSpeech(); askAgent({ text: t }); } };
     if (autoStart && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) beginRecording();
     voiceKey().catch(() => { });
   });
-  dlg().addEventListener('close', () => { if (voice.rec) { voice.rec.cancel(); voice.rec = null; } stopSpeaking(); }, { once: true });
+  voice.history = []; voice.convo = true;
+  dlg().addEventListener('close', () => { voice.convo = false; if (voice.rec) { voice.rec.cancel(); voice.rec = null; } stopSpeaking(); try { voice.ctx && voice.ctx.close(); } catch (e) { } voice.ctx = null; }, { once: true });
 }
 const vStatus = t => { const el = $('#vStatus'); if (el) el.textContent = t; };
 async function beginRecording() {
@@ -2011,7 +2017,7 @@ async function beginRecording() {
   if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { vStatus('This device can’t record here — type instead (tap the keyboard’s microphone to dictate).'); $('#vText') && $('#vText').focus(); return; }
   try {
     voice.rec = await startRecording(rms => { const l = $('#vLevel'); if (l) l.style.width = Math.min(100, rms * 900) + '%'; }, () => finishRecording());
-    $('#vMic') && $('#vMic').classList.add('on'); $('#vMic') && $('#vMic').setAttribute('aria-label', 'Stop'); vStatus('Listening… I’ll stop when you pause.');
+    $('#vMic') && $('#vMic').classList.add('on'); $('#vMic') && $('#vMic').setAttribute('aria-label', 'Stop'); vStatus(voice.history && voice.history.length ? 'Listening… (say “that’s all” to finish)' : 'Listening… I’ll stop when you pause.');
   } catch (e) {
     voice.rec = null;
     vStatus(e && e.name === 'NotAllowedError' ? 'Microphone access is off. Allow it in iPhone Settings, or type below — the keyboard microphone works too.' : 'Couldn’t start the microphone — type below instead.');
@@ -2021,7 +2027,7 @@ async function finishRecording() {
   const r = voice.rec; if (!r) return; voice.rec = null;
   $('#vMic') && $('#vMic').classList.remove('on'); const l = $('#vLevel'); if (l) l.style.width = '0';
   const { wav, seconds, heard } = await r.stop();
-  if (!heard || seconds < 0.6) { vStatus('I didn’t catch anything — tap the mic and try again.'); return; }
+  if (!heard || seconds < 0.6) { vStatus(voice.history && voice.history.length ? 'Paused — tap the mic to keep talking, or close when you’re done.' : 'I didn’t catch anything — tap the mic and try again.'); return; }
   askAgent({ audio: { mime: 'audio/wav', data: toBase64(wav) } });
 }
 const VOICE_SCHEMA = {
@@ -2206,6 +2212,7 @@ async function askAgent(input) {
   const t0 = Date.now(); vStatus('Thinking…'); $('#vOut') && ($('#vOut').innerHTML = '');
   const tick = setInterval(() => { const el = $('#vStatus'); if (el && /^(Thinking|Listening back)/.test(el.textContent)) vStatus(`${el.textContent.split('…')[0]}… ${Math.round((Date.now() - t0) / 1000)}s`); }, 1000);
   const context = agentContext();
+  if (voice.history && voice.history.length) context.earlier_in_this_conversation = voice.history.slice(-3);
   try {
     let agent = null, key = null;
     if (provider() === 'openai') {
@@ -2224,10 +2231,25 @@ async function askAgent(input) {
     vStatus(msg);
   } finally { voice.busy = false; clearInterval(tick); }
 }
+
+const handsFree = () => S.settings.voiceHandsFree !== false;
+const STOP_WORDS = /^(?:ok(?:ay)?[,. ]*)?(?:that'?s (?:all|it)|thanks?(?: you)?|thank you|no(?:pe)?,? (?:that'?s|thanks)|stop|done|bye|goodbye|never ?mind|i'?m (?:done|good))\b/i;
+async function afterReply(a, canContinue) {
+  voice.history = (voice.history || []).concat([{ she_said: a.heard || '', you_replied: a.reply || '' }]).slice(-3);
+  const ending = STOP_WORDS.test((a.heard || '').trim());
+  await speak(ending ? (a.reply && a.reply.length < 60 ? a.reply : 'Okay — talk soon.') : a.reply);
+  if (ending) { if (voice.convo) closeModal(); return; }
+  if (handsFree() && canContinue && voice.convo && dlg().open && !voice.rec && !voice.busy) {
+    await new Promise(r => setTimeout(r, 250));
+    if (voice.convo && dlg().open && !voice.rec) beginRecording();
+  }
+}
 function applyVoice(pick, a) {
   const groups = {}; for (const p of pick) (groups[p.k] = groups[p.k] || []).push(p.fn);
   for (const [k, fns] of Object.entries(groups)) commit(k, 'voice change', root => fns.forEach(f => f(root)), { render: false });
-  closeModal(); render();
+  if (handsFree() && voice.convo) { const out = $('#vOut'); if (out) out.innerHTML = `${a.heard ? `<p class="small sans muted" style="margin:0 0 .3rem">You said: “${esc(a.heard)}”</p>` : ''}<p style="margin:.2rem 0">${esc(a.reply || '')}</p><p class="small sans" style="color:var(--good)">✓ ${pick.map(p => esc(p.text)).join('<br>✓ ')}</p>`; }
+  else closeModal();
+  render();
   const firstDate = (a.actions || []).map(x => x.date && parseDateLoose(x.date)).find(Boolean);
   toast(pick.length === 1 ? pick[0].text : `Done — ${pick.length} changes`, 'Undo', () => { for (let i = 0; i < Object.keys(groups).length; i++) undo(); }, 9000);
   if (firstDate && (firstDate !== R.date || R.view !== 'today')) go('today', firstDate);
@@ -2241,15 +2263,15 @@ function showAgent(a) {
   }
   vStatus(a._secs ? `${a._model && /^gpt|^o\d/.test(a._model) ? 'ChatGPT' : 'Gemini'} answered in ${a._secs.toFixed(1)}s${a._relay ? ' (through the Sheet — update the Sheet script or add a key on this device to speed up)' : ''}` : '');
   const out = $('#vOut'); if (!out) return;
-  if (S.settings.voiceAuto !== false && ok.length && !bad.length && !ok.some(p => p.danger)) { speak(a.reply); return applyVoice(ok, a); }   // nothing risky → save at once, Undo stays available
+  if (S.settings.voiceAuto !== false && ok.length && !bad.length && !ok.some(p => p.danger)) { applyVoice(ok, a); return afterReply(a, true); }   // nothing risky → save at once, Undo stays available
   out.innerHTML = `${a.heard ? `<p class="small sans muted" style="margin:0 0 .3rem">You said: “${esc(a.heard)}”</p>` : ''}
     ${a.reply ? `<p style="margin:.2rem 0 .6rem;font-size:1.05rem">${esc(a.reply)}</p>` : ''}
     ${ok.length ? `<div class="card flat" style="padding:.5rem .7rem">${ok.map((p, i) => `<label class="row small" style="flex-wrap:nowrap;padding:.35rem 0;align-items:flex-start;gap:.5rem;${p.danger ? 'color:var(--bad)' : ''}"><input type="checkbox" data-vi="${i}" checked style="margin-top:.2rem"> <span>${esc(p.text)}</span></label>`).join('')}</div>
       <div class="row" style="justify-content:flex-end;margin-top:.6rem"><button class="btn" id="vAgain">Not quite — try again</button><button class="btn primary" id="vApply">Apply ${ok.length > 1 ? ok.length + ' changes' : 'change'}</button></div>` : ''}
     ${bad.length ? `<p class="tiny sans" style="color:var(--warn)">${bad.map(b => esc(b.bad)).join('<br>')}</p>` : ''}`;
-  speak(a.reply);
-  if ($('#vAgain')) $('#vAgain').onclick = () => { out.innerHTML = ''; beginRecording(); };
-  if ($('#vApply')) $('#vApply').onclick = () => { const pick = $$('[data-vi]', out).filter(c => c.checked).map(c => ok[+c.dataset.vi]); if (pick.length) applyVoice(pick, a); };
+  afterReply(a, !ok.length);   // a question or answer → keep listening; changes waiting for a tap → wait for her
+  if ($('#vAgain')) $('#vAgain').onclick = () => { stopSpeaking(); out.innerHTML = ''; beginRecording(); };
+  if ($('#vApply')) $('#vApply').onclick = () => { const pick = $$('[data-vi]', out).filter(c => c.checked).map(c => ok[+c.dataset.vi]); if (pick.length) { stopSpeaking(); applyVoice(pick, a); if (handsFree() && voice.convo) afterReply({ heard: '', reply: 'Done.' }, true); } };
 }
 
 /* ----- settings card ----- */
@@ -2269,6 +2291,7 @@ function voiceCard() {
     </div></details>`}
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
+    <label class="row small sans"><input type="checkbox" data-b="settings.voiceHandsFree" ${S.settings.voiceHandsFree !== false ? 'checked' : ''}> Keep listening after each reply — a conversation; say “that's all” or “thanks” to finish</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
     <div class="row" style="align-items:flex-end">
       <label class="f grow">Voice<select data-b="settings.speakVoice">
