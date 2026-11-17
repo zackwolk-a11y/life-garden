@@ -1817,14 +1817,14 @@ async function startRecording(onLevel, onAutoStop) {
   const AC = window.AudioContext || window.webkitAudioContext; const ctx = new AC();
   if (ctx.state === 'suspended') await ctx.resume();
   const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
-  let heard = false, quietSince = 0; const t0 = Date.now();
+  let heard = false, quietSince = 0, lastLoud = 0; const t0 = Date.now();
   proc.onaudioprocess = e => {
     const d = e.inputBuffer.getChannelData(0); chunks.push(new Float32Array(d));
     let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] * d[i]; const rms = Math.sqrt(s / (d.length / 4));
     onLevel && onLevel(rms);
     const now = Date.now();
-    if (rms > 0.02) { heard = true; quietSince = 0; } else if (heard && !quietSince) quietSince = now;
-    if ((heard && quietSince && now - quietSince > 1700) || now - t0 > 30000) onAutoStop && onAutoStop();
+    if (rms > 0.02) { heard = true; quietSince = 0; lastLoud = chunks.length; } else if (heard && !quietSince) quietSince = now;
+    if ((heard && quietSince && now - quietSince > 1100) || now - t0 > 30000) onAutoStop && onAutoStop();
   };
   src.connect(proc); proc.connect(ctx.destination);
   return {
@@ -1832,7 +1832,8 @@ async function startRecording(onLevel, onAutoStop) {
       try { src.disconnect(); proc.disconnect(); } catch (e) { }
       stream.getTracks().forEach(t => t.stop());
       const rate = ctx.sampleRate; try { await ctx.close(); } catch (e) { }
-      return { wav: encodeWav(downsample(chunks, rate, 16000), 16000), seconds: chunks.length * 4096 / rate, heard };
+      const keep = heard ? chunks.slice(0, Math.min(chunks.length, lastLoud + 3)) : chunks;   // drop trailing silence
+      return { wav: encodeWav(downsample(keep, rate, 16000), 16000), seconds: keep.length * 4096 / rate, heard };
     },
     cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } stream.getTracks().forEach(t => t.stop()); ctx.close().catch(() => { }); },
   };
@@ -1861,15 +1862,16 @@ function unlockSpeech() { try { if ('speechSynthesis' in window) { const u = new
 
 /* ----- what the assistant gets to see: about ten days of the plan and open next steps ----- */
 function agentContext() {
-  const t0 = todayISO(), from = [addDays(t0, -2), addDays(R.date, -3)].sort()[0], to = [addDays(t0, 10), addDays(R.date, 7)].sort()[1];
+  const t0 = todayISO(), from = [addDays(t0, -1), addDays(R.date, -1)].sort()[0], to = [addDays(t0, 7), addDays(R.date, 3)].sort()[1];
+  const st = { confirmed: 'C', proposed: 'P', needs: 'N', source: 'S', sourceproposed: 'SP' };
   return {
-    now: `${t0} ${hhmm(nowMin())}`, weekday: DOW[dow(t0)], timezone: 'America/Los_Angeles (wall clock)', viewing_date: R.date, people: people(),
-    blocks: S.blocks.filter(b => b.date >= from && b.date <= to && !(b.status === 'proposed' && draftHidden())).sort((a, b) => (a.date + hhmm(a.start)).localeCompare(b.date + hhmm(b.start)))
-      .map(b => ({ id: b.id, date: b.date, start: hm(b.start), end: hm(b.end), title: b.title, kind: b.kind, ...(b.status ? { status: STATUS_WORDS[b.status] } : {}), ...(b.done ? { done: true } : {}) })),
-    next_steps: S.tasks.filter(t => !t.done).slice(0, 60).map(t => ({ id: t.id, title: t.title, ...(t.date ? { date: t.date } : {}) })),
+    now: `${t0} ${hhmm(nowMin())} (${DOW[dow(t0)]})`, viewing_date: R.date, people: people(),
+    blocks_format: 'id|date|start-end|title|kind|status(C confirmed, P proposed draft, N needs confirmation, S source-listed, SP source+proposed, blank = her own)|done',
+    blocks: S.blocks.filter(b => b.date >= from && b.date <= to && !b.sleep && !(b.status === 'proposed' && draftHidden())).sort((a, b) => (a.date + hhmm(a.start)).localeCompare(b.date + hhmm(b.start)))
+      .map(b => [b.id, b.date, hm(b.start) + '-' + hm(b.end), b.title, b.kind, st[b.status] || '', b.done ? 'done' : ''].join('|').replace(/\|+$/, '')),
+    next_steps: S.tasks.filter(t => !t.done).slice(0, 40).map(t => t.id + '|' + t.title + (t.date ? '|' + t.date : '')),
   };
 }
-
 /* ----- turn the assistant's proposals into checked, human-readable changes ----- */
 const shortDay = d => fmtDate(d, { weekday: 'short', month: 'short', day: 'numeric' });
 function planActions(actions) {
@@ -1925,6 +1927,7 @@ function openVoice(autoStart) {
     $('#vMic', m).onclick = () => voice.rec ? finishRecording() : beginRecording();
     $('#vForm', m).onsubmit = e => { e.preventDefault(); const t = $('#vText', m).value.trim(); if (t) { unlockSpeech(); askAgent({ text: t }); } };
     if (autoStart && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) beginRecording();
+    agentConfig().catch(() => { });
   });
   dlg().addEventListener('close', () => { if (voice.rec) { voice.rec.cancel(); voice.rec = null; } try { speechSynthesis.cancel(); } catch (e) { } }, { once: true });
 }
@@ -1948,17 +1951,56 @@ async function finishRecording() {
   if (!heard || seconds < 0.6) { vStatus('I didn’t catch anything — tap the mic and try again.'); return; }
   askAgent({ audio: { mime: 'audio/wav', data: toBase64(wav) } });
 }
+const AGENT_CFG_KEY = 'lifegarden.agentcfg';
+async function agentConfig() {
+  try { const c = JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null'); if (c && c.url === sync.cfg.url && Date.now() - c.at < 7 * 864e5) return c.none ? null : c.cfg; } catch (e) { }
+  const r = await api('POST', { op: 'agentConfig' });
+  const cfg = r.agentConfig || null;                                // older scripts don't offer it → use the relay
+  try { localStorage.setItem(AGENT_CFG_KEY, JSON.stringify({ url: sync.cfg.url, at: Date.now(), cfg, none: !cfg, model: null })); } catch (e) { }
+  return cfg;
+}
+function rememberModel(m) { try { const c = JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null'); if (c) { c.model = m; localStorage.setItem(AGENT_CFG_KEY, JSON.stringify(c)); } } catch (e) { } }
+function preferredModel() { try { return (JSON.parse(localStorage.getItem(AGENT_CFG_KEY) || 'null') || {}).model; } catch (e) { return null; } }
+async function geminiDirect(cfg, input, context) {
+  const parts = [];
+  if (input.audio) parts.push({ inlineData: { mimeType: input.audio.mime, data: input.audio.data } });
+  parts.push({ text: 'Plan context (JSON):\n' + JSON.stringify(context) + (input.text ? '\n\nJordan typed: ' + input.text : "\n\nJordan's request is in the audio.") });
+  const base = { systemInstruction: { parts: [{ text: cfg.rules }] }, contents: [{ role: 'user', parts }], generationConfig: { responseMimeType: 'application/json', responseSchema: cfg.schema, temperature: 0.2 } };
+  const pref = preferredModel(), models = pref ? [pref, ...cfg.models.filter(m => m !== pref)] : cfg.models;
+  for (const m of models) {
+    for (const thinking of [true, false]) {
+      const body = JSON.parse(JSON.stringify(base)); if (thinking) body.generationConfig.thinkingConfig = /gemini-2\./.test(m) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' };
+      const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 30000);
+      let r; try { r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.key }, body: JSON.stringify(body), signal: ctrl.signal }); } finally { clearTimeout(to); }
+      const txt = await r.text();
+      if (r.status === 400 && thinking && /thinking/i.test(txt)) continue;      // model doesn't take that setting → retry plainly
+      if (r.status === 404) break;                                             // try the next model
+      if (r.status === 429) throw new Error('rate');
+      if (r.status === 401 || r.status === 403 || (r.status === 400 && /API key/i.test(txt))) throw new Error('apikey');
+      if (!r.ok) throw new Error('Gemini ' + r.status);
+      const j = JSON.parse(txt); rememberModel(m);
+      return JSON.parse(j.candidates[0].content.parts.map(p => p.text || '').join(''));
+    }
+  }
+  throw new Error('no model available');
+}
 async function askAgent(input) {
   if (voice.busy) return; voice.busy = true;
-  vStatus('Thinking…'); $('#vOut') && ($('#vOut').innerHTML = '');
+  const t0 = Date.now(); vStatus('Thinking…'); $('#vOut') && ($('#vOut').innerHTML = '');
+  const tick = setInterval(() => vStatus(`Thinking… ${Math.round((Date.now() - t0) / 1000)}s`), 1000);
+  const context = agentContext();
   try {
-    if (sync.localRev && sync.status !== 'saved') await syncNow({ quiet: true }).catch(() => { });
-    const r = await api('POST', { op: 'agent', ...input, context: agentContext() });
-    showAgent(r.agent || {});
+    let agent = null, cfg = null;
+    try { cfg = await agentConfig(); } catch (e) { if (e.message === 'nokey') throw e; }
+    if (cfg) { try { agent = await geminiDirect(cfg, input, context); } catch (e) { if (['rate', 'apikey'].includes(e.message)) throw e; console.warn('direct Gemini failed, using the Sheet relay', e); } }
+    if (!agent) agent = (await api('POST', { op: 'agent', ...input, context })).agent || {};
+    clearInterval(tick); showAgent(agent);
   } catch (e) {
+    clearInterval(tick);
+    if (e.message === 'nokey' || e.message === 'apikey') try { localStorage.removeItem(AGENT_CFG_KEY); } catch (x) { }
     const msg = { nokey: 'The assistant needs a Gemini key in the Sheet’s script — see Settings & backup → Voice assistant.', rate: 'Gemini is busy right now. Try again in a minute.', apikey: 'Gemini didn’t accept the key. Check GEMINI_API_KEY in the Sheet’s script settings.' }[e.message] || (e.name === 'AbortError' ? 'That took too long — try again.' : (e.message || 'Something went wrong.'));
     vStatus(msg);
-  } finally { voice.busy = false; }
+  } finally { voice.busy = false; clearInterval(tick); }
 }
 function showAgent(a) {
   const plan = planActions(a.actions), ok = plan.filter(p => !p.bad), bad = plan.filter(p => p.bad);

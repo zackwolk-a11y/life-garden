@@ -107,6 +107,10 @@ function doPost(e) {
   let body; try { body = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
   const bad = checkKey_(body.k); if (bad) return out_({ ok: false, error: bad });
   if (body.op === 'agent') return out_(agent_(body));
+  if (body.op === 'agentConfig') {   // lets the app call Gemini directly (faster); passcode-protected like everything else
+    const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+    return out_(key ? { ok: true, agentConfig: { key, models: GEMINI_MODELS, rules: AGENT_RULES, schema: AGENT_SCHEMA } } : { ok: false, error: 'nokey' });
+  }
   const lock = LockService.getScriptLock(); lock.waitLock(25000);
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -245,6 +249,8 @@ const AGENT_RULES = [
   'Questions about her plan ("what\'s on Thursday?") get a spoken answer and no actions.',
   'Reply in one or two short, plain sentences suitable to be read aloud. Do not repeat every detail of the change; the app shows it on screen. Never give medical, legal or financial advice.',
 ].join('\n');
+// Planner edits need little reasoning: ask for the fastest thinking setting the model supports.
+function fastThinking_(m) { return /gemini-2\./.test(m) ? { thinkingBudget: 0 } : { thinkingLevel: 'low' }; }
 function agent_(body) {
   const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
   if (!key) return { ok: false, error: 'nokey' };
@@ -255,8 +261,11 @@ function agent_(body) {
     generationConfig: { responseMimeType: 'application/json', responseSchema: AGENT_SCHEMA, temperature: 0.2 } };
   let last = '';
   for (const m of GEMINI_MODELS) {
-    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
-      method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(req), muteHttpExceptions: true });
+    const call = withThinking => { const q = JSON.parse(JSON.stringify(req)); if (withThinking) q.generationConfig.thinkingConfig = fastThinking_(m);
+      return UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
+        method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: JSON.stringify(q), muteHttpExceptions: true }); };
+    let r = call(true);
+    if (r.getResponseCode() === 400 && /thinking/i.test(r.getContentText())) r = call(false);
     const code = r.getResponseCode(), txt = r.getContentText();
     if (code === 404) { last = 'model ' + m + ' not found'; continue; }
     if (code === 429) return { ok: false, error: 'rate' };
