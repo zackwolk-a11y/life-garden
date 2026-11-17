@@ -2046,6 +2046,7 @@ const VOICE_RULES = [
   'To move a block, use update_block with its id and the new date/start/end, keeping its length unless she says otherwise. "Mark X done" is update_block with done=true. To-dos without a time are add_step (date only if she gave a day).',
   'Money: add_money only when she states an amount. It is an estimate unless she says it was already paid or received.',
   'Questions about her plan ("what\'s on Thursday?") get a spoken answer and no actions.',
+  'Never say you added, moved, finished or removed something unless that exact action is in "actions" — the app only changes what is in "actions".',
   'Reply in one or two short, plain sentences suitable to be read aloud. Do not repeat every detail of the change; the app shows it on screen. Never give medical, legal or financial advice.',
 ].join('\n');
 
@@ -2212,10 +2213,15 @@ function applyVoice(pick, a) {
   closeModal(); render();
   const firstDate = (a.actions || []).map(x => x.date && parseDateLoose(x.date)).find(Boolean);
   toast(pick.length === 1 ? pick[0].text : `Done — ${pick.length} changes`, 'Undo', () => { for (let i = 0; i < Object.keys(groups).length; i++) undo(); }, 9000);
-  if (firstDate && firstDate !== R.date && R.view === 'today') setTimeout(() => toast(`See ${shortDay(firstDate)}?`, 'Go', () => go('today', firstDate)), 400);
+  if (firstDate && (firstDate !== R.date || R.view !== 'today')) go('today', firstDate);
+  const newest = S.blocks.filter(b => b.date === (firstDate || R.date) && b.notes === 'Added by voice').slice(-1)[0];
+  setTimeout(() => { const el = newest && $(`.blk[data-blk="${newest.id}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('preview'); setTimeout(() => el.classList.remove('preview'), 2500); } }, 150);
 }
 function showAgent(a) {
   const plan = planActions(a.actions), ok = plan.filter(p => !p.bad), bad = plan.filter(p => p.bad);
+  if (!ok.length && /\b(add(ed)?|mov(e|ed)|scheduled|put|mark(ed)?|remov(e|ed)|delet(e|ed)|logg?ed|set)\b/i.test(a.reply || '') && !/\?\s*$/.test(a.reply || '')) {
+    a.reply = 'Sorry — I understood you, but no change came through, so nothing was saved. Please try again and say the day and time.';
+  }
   vStatus(a._secs ? `${a._model && /^gpt|^o\d/.test(a._model) ? 'ChatGPT' : 'Gemini'} answered in ${a._secs.toFixed(1)}s${a._relay ? ' (through the Sheet — update the Sheet script or add a key on this device to speed up)' : ''}` : '');
   const out = $('#vOut'); if (!out) return;
   if (S.settings.voiceAuto !== false && ok.length && !bad.length && !ok.some(p => p.danger)) { speak(a.reply); return applyVoice(ok, a); }   // nothing risky → save at once, Undo stays available

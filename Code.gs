@@ -287,6 +287,7 @@ const AGENT_RULES = [
   'To move a block, use update_block with its id and the new date/start/end, keeping its length unless she says otherwise. "Mark X done" is update_block with done=true. To-dos without a time are add_step (date only if she gave a day).',
   'Money: add_money only when she states an amount. It is an estimate unless she says it was already paid or received.',
   'Questions about her plan ("what\'s on Thursday?") get a spoken answer and no actions.',
+  'Never say you added, moved, finished or removed something unless that exact action is in "actions" — the app only changes what is in "actions".',
   'Reply in one or two short, plain sentences suitable to be read aloud. Do not repeat every detail of the change; the app shows it on screen. Never give medical, legal or financial advice.',
 ].join('\n');
 // Planner edits need little reasoning: ask for the fastest thinking setting the model supports.
