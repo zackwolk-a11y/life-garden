@@ -13,8 +13,9 @@
 <link rel="preconnect" href="https://generativelanguage.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://api.openai.com" crossorigin>
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png?v=2">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png?v=2">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=2">
 <title>Jordan's Life Garden</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
@@ -53,17 +54,19 @@ h2{font-size:1.35rem} h3{font-size:1.05rem}
 
 /* ---------- hero ---------- */
 .hero{position:relative;height:230px;overflow:hidden;border-bottom:1px solid var(--line)}
-.hero img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 20%;transition:filter .6s}
+.hero > img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 20%;transition:filter .6s}
 .hero::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 30%,var(--bg) 100%)}
 .hero .title{position:absolute;left:1.5rem;bottom:1rem;z-index:2}
 .hero h1{font-size:2rem;text-shadow:0 2px 12px rgba(0,0,0,.5);color:#fff7ea}
+h1 .logo{width:2.4rem;height:2.4rem;border-radius:.6rem;vertical-align:-.45rem;margin-right:.6rem;box-shadow:0 2px 10px rgba(0,0,0,.45)}
+@media (max-width:860px){h1 .logo{width:1.9rem;height:1.9rem;border-radius:.5rem;vertical-align:-.35rem;margin-right:.45rem}}
 .hero .sub{color:#f6e6cc;text-shadow:0 1px 8px rgba(0,0,0,.6);font-style:italic}
 [data-theme=light] .hero h1{color:#2b2017;text-shadow:0 1px 10px rgba(255,248,235,.9)}
 [data-theme=light] .hero .sub{color:#4a3826;text-shadow:0 1px 8px rgba(255,248,235,.9)}
 .hero .topright{position:absolute;right:1rem;top:1rem;z-index:2;display:flex;gap:.5rem;align-items:center}
-.season-winter img{filter:saturate(.35) hue-rotate(185deg) brightness(1.05) contrast(.95)}
-.season-spring img{filter:hue-rotate(70deg) saturate(.9) brightness(1.05)}
-.season-summer img{filter:hue-rotate(40deg) saturate(1.15) brightness(1.04)}
+.season-winter > img{filter:saturate(.35) hue-rotate(185deg) brightness(1.05) contrast(.95)}
+.season-spring > img{filter:hue-rotate(70deg) saturate(.9) brightness(1.05)}
+.season-summer > img{filter:hue-rotate(40deg) saturate(1.15) brightness(1.04)}
 
 /* ---------- layout ---------- */
 .shell{display:grid;grid-template-columns:220px 1fr;min-height:calc(100vh - 230px)}
@@ -315,7 +318,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
     <button class="btn sm" id="themeBtn" title="Switch light / dark">☾ / ☀</button>
   </div>
   <div class="title">
-    <h1>Jordan's Life Garden</h1>
+    <h1><img class="logo" src="icons/icon-192.png?v=2" alt="" aria-hidden="true">Jordan's Life Garden</h1>
     <div class="sub" id="heroSub">Plan gently. Protect what matters. Record what actually happened.</div>
   </div>
 </header>
@@ -329,7 +332,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.17-h';
+const APP_VERSION = '2026.11.17-i';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);

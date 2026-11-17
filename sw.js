@@ -1,6 +1,6 @@
 /* Life Garden service worker: works offline; always tries the network first for the app page so updates arrive. */
-const CACHE = 'lifegarden-v22';
-const SHELL = ['./', './index.html', './manifest.webmanifest', './garden.jpg', './Code.gs', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png'];
+const CACHE = 'lifegarden-v23';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './garden.jpg', './Code.gs', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png', './icons/favicon-64.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {
