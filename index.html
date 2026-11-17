@@ -276,7 +276,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
   .kan{grid-template-columns:repeat(4,78vw);scroll-snap-type:x mandatory}.kan .col{scroll-snap-align:start}
 }
 @media (display-mode: standalone){ .hero{height:calc(130px + var(--sat))} .hero .sub{display:none} }
-.blk{touch-action:manipulation}
+.blk{touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
 #voiceFab{position:fixed;right:calc(1.2rem + var(--sar));bottom:calc(1.2rem + var(--sab));z-index:55;width:3.6rem;height:3.6rem;border-radius:50%;border:0;background:var(--accent);color:#1b120a;font-size:1.5rem;box-shadow:0 6px 20px rgba(0,0,0,.35);cursor:pointer}
 #voiceFab:active{transform:scale(.95)}
 @media (max-width:860px){#voiceFab{bottom:calc(4.9rem + var(--sab));right:calc(.9rem + var(--sar));width:3.3rem;height:3.3rem}}
@@ -313,7 +313,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.17-e';
+const APP_VERSION = '2026.11.17-g';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -834,7 +834,7 @@ function timelineHTML(d, list, opts = {}) {
       ${b.kind !== 'flexible' ? `<span class="lock" title="${KINDS[b.kind]}">🔒</span>` : ''}
       <div class="bt">${stl ? `<span class="stb" title="${stl[0]}">${stl[1]}</span> ` : ''}${esc(b.title)}${short ? ` <span class="bm">· ${fmtTimeShort(b.start)}</span>` : ''}</div>
       ${short ? '' : `<div class="bm">${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)} · ${stl ? stl[0] : CATS[c].label}</div>`}
-      ${!opts.preview && isMovable(b) && (b.end - b.start) * px >= 40 ? '<div class="grip" data-grip="1" title="Drag to resize"></div>' : ''}
+      ${!opts.preview && !b.done && (b.end - b.start) * px >= 40 ? '<div class="grip" data-grip="1" title="Drag to resize"></div>' : ''}
     </div>`;
   }
   return h + '</div>';
@@ -899,7 +899,7 @@ VIEWS.today = () => {
   return `
   <div class="sec-head"><div><h2>${fmtDate(d)}${d === t0 ? ' · Today' : ''}</h2>
     <p class="sans small">${bl.length ? `${bl.length} block${bl.length > 1 ? 's' : ''} · ${fmtDur(sched)} planned` : 'Nothing scheduled yet'}${cf.pairs.length ? ` · <span style="color:var(--bad)">${cf.pairs.length} overlap${cf.pairs.length > 1 ? 's' : ''}</span>` : ''}${isPast ? ' · past day' : ''}</p></div>
-    <div class="row"><button class="btn" data-act="addBlock">＋ Block</button><button class="btn" data-act="addTask">＋ Next step</button></div></div>
+    <div class="row"><button class="btn" data-act="briefing">☀ Briefing</button><button class="btn" data-act="addBlock">＋ Block</button><button class="btn" data-act="addTask">＋ Next step</button></div></div>
   ${!sync.cfg && !S.settings.hideConnectHint ? `<div class="connectbar"><span>📱 Saved on this device only. Connect the Google Sheet to share this plan with every phone and with Gemini.</span><span class="row"><button class="btn sm primary" data-act="nav" data-v="backup">Connect</button><button class="btn sm ghost" data-act="hideHint">Not now</button></span></div>` : ''}
   <form class="cmdbar" id="cmdForm" autocomplete="off"><input id="cmd" aria-label="Quick add" placeholder="Quick add — “Yoga 9–10am tomorrow”, “Call landlord”, “move Homework to 2pm”   ( / )"><button class="btn primary">Add</button></form>
   <div class="daystrip" role="group" aria-label="Choose day">
@@ -913,7 +913,7 @@ VIEWS.today = () => {
       <div class="row between" style="margin-bottom:.5rem"><h3 id="tbH">Time blocking</h3>
         <div class="row"><button class="btn sm" data-act="lateStart" ${bl.some(isMovable) ? '' : 'disabled'} title="Preview a gentler version of this day">☕ Late start…</button></div></div>
       <div class="tl-wrap"><div class="tl-scroll" id="tlScroll">${bl.length || true ? timelineHTML(d) : ''}</div></div>
-      <p class="tiny muted sans" style="margin:.4rem .2rem">${matchMedia('(pointer:coarse)').matches ? 'Press and hold a flexible block, then drag to move it (you’ll review any knock-on changes first). Drag its bottom handle to resize. Tap to edit.' : 'Drag a flexible block to move it (you’ll review any knock-on changes first). Drag its bottom edge to resize.'} 🔒 fixed and protected blocks only change in the editor. Double-click empty space to add a block there.</p>
+      <p class="tiny muted sans" style="margin:.4rem .2rem">${matchMedia('(pointer:coarse)').matches ? 'Press and hold a block, then drag to move it (you’ll review any knock-on changes first). Drag its bottom handle to resize. Tap to edit.' : 'Drag a block to move it (you’ll review any knock-on changes first). Drag its bottom edge to resize.'} Double-click empty space to add a block there.</p>
       ${cf.pairs.length ? `<div class="card" style="border-color:color-mix(in srgb,var(--bad) 45%,var(--line));margin-top:.6rem"><h3>Overlaps to decide</h3><ul class="small sans" style="margin:.2rem 0;padding-left:1.1rem">${cf.pairs.map(([a, b]) => `<li><a href="#" data-act="openBlock" data-id="${a.id}">${esc(a.title)}</a> (${fmtTimeShort(a.start)}–${fmtTimeShort(a.end)}) and <a href="#" data-act="openBlock" data-id="${b.id}">${esc(b.title)}</a> (${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)})</li>`).join('')}</ul><p class="tiny muted sans" style="margin:.3rem 0 0">The planner never decides which one matters more.</p></div>` : ''}
       ${fixed.length ? `<details class="disc" style="margin-top:.75rem"><summary>Fixed appointments (${fixed.length})</summary><div class="in small sans">${fixed.map(b => `<div class="row between" style="padding:.25rem 0;border-bottom:1px solid var(--line)"><span><span class="dot" style="background:${catColor(catOf(b))}"></span> ${esc(b.title)}</span><span class="muted">${fmtTime(b.start)} – ${fmtTime(b.end)} <button class="btn sm ghost" data-act="seeBlock" data-id="${b.id}">See in timeline</button></span></div>`).join('')}</div></details>` : ''}
     </section>
@@ -965,7 +965,7 @@ function wireTimeline(sc) {
       return {
         move(y) {
           const dy = y - y0; if (!moved && Math.abs(dy) < 5) return;
-          if (!isMovable(b)) return;
+          if (b.done) return;
           moved = true; el.classList.add('dragging');
           if (!tag) { tag = document.createElement('div'); tag.className = 'droptime'; tl.appendChild(tag); }
           if (grip) { val = Math.min(1440, Math.max(b.start + 15, yToMin(top0 + h0 + dy))); el.style.height = (val - b.start) * px - 2 + 'px'; tag.style.top = (val - r0) * px - 10 + 'px'; tag.textContent = 'ends ' + fmtTime(val); }
@@ -993,10 +993,10 @@ function wireTimeline(sc) {
     // touch: a quick tap opens the editor, press-and-hold lifts the block, the bottom handle resizes at once; a normal swipe scrolls the day
     el.addEventListener('touchstart', e => {
       if (e.touches.length !== 1) return;
-      const t0 = e.touches[0], grip = !!e.target.dataset.grip && isMovable(b); R.interacting = true;
+      const t0 = e.touches[0], grip = !!e.target.dataset.grip && !b.done; R.interacting = true;
       let d = null, cancelled = false, x0 = t0.clientX, y0 = t0.clientY, timer = null;
       const lift = () => { d = startDrag(grip, y0); el.classList.add('lifted'); if (navigator.vibrate) navigator.vibrate(12); };
-      if (grip) lift(); else if (isMovable(b)) timer = setTimeout(lift, 380);
+      if (grip) lift(); else if (!b.done) timer = setTimeout(lift, 380);
       const mv = ev => { const t = ev.touches[0]; if (d) { ev.preventDefault(); d.move(t.clientY); } else if (Math.hypot(t.clientX - x0, t.clientY - y0) > 8) { cancelled = true; clearTimeout(timer); R.interacting = false; } };
       const end = ev => { clearTimeout(timer); R.interacting = false; el.removeEventListener('touchmove', mv); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); setTimeout(flushPendingRender, 0);
         if (d) { ev.preventDefault(); d.end(false); if (!el.classList.contains('dragging')) el.classList.remove('lifted'); }
@@ -1005,15 +1005,63 @@ function wireTimeline(sc) {
     }, { passive: true });
   });
 }
-function reviewMove(id, ns) {
-  const b = S.blocks.find(x => x.id === id); const r = ripple(b.date, id, ns);
-  const list = r.ok ? r.changes.map(c => `<li><b>${esc(c.title)}</b>: <span class="from">${fmtTime(c.from)}</span> → <span class="to">${fmtTime(c.to)}</span>–${fmtTime(c.to + c.dur)}</li>`).join('') : '';
+function reviewMove(id, ns, nd) {
+  const b = S.blocks.find(x => x.id === id); nd = nd || b.date;
+  const sim = nd === b.date ? S.blocks : clone(S.blocks).map(x => x.id === id ? { ...x, date: nd } : x);
+  const r = ripple(nd, id, ns, sim), dayTxt = nd !== b.date ? `${fmtDate(nd, { weekday: 'short', month: 'short', day: 'numeric' })}, ` : '';
+  const list = r.ok ? r.changes.map(c => `<li><b>${esc(c.title)}</b>: <span class="from">${c.id === id && nd !== b.date ? fmtDate(b.date, { weekday: 'short', month: 'short', day: 'numeric' }) + ', ' : ''}${fmtTime(c.from)}</span> → <span class="to">${c.id === id ? dayTxt : ''}${fmtTime(c.to)}</span>–${fmtTime(c.to + c.dur)}</li>`).join('') : '';
+  const lockNote = b.kind !== 'flexible' ? `<p class="small" style="color:var(--warn)">🔒 “${esc(b.title)}” is ${b.kind === 'fixed' ? 'a fixed appointment' : 'protected time'} — if it's a real booking, remember to change it with whoever it's with too.</p>` : '';
   openModal(`<div class="mh"><h3>Review move</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
-   <div class="mb">${r.ok ? `<p class="small">${r.changes.length > 1 ? `Moving <b>${esc(b.title)}</b> pushes ${r.changes.length - 1} later flexible block${r.changes.length > 2 ? 's' : ''} by the minimum needed. Durations and dates stay the same; protected time doesn't move.` : 'Only this block changes.'}</p><ul class="diff">${list}</ul>`
+   <div class="mb">${lockNote}${r.ok ? `<p class="small">${r.changes.length > 1 ? `Moving <b>${esc(b.title)}</b> pushes ${r.changes.length - 1} later flexible block${r.changes.length > 2 ? 's' : ''} by the minimum needed. Durations stay the same; locked time doesn't move.` : 'Only this block changes.'}</p><ul class="diff">${list}</ul>`
       : `<p><b>This move can't be applied as-is.</b></p><p class="small">${esc(r.reason)}</p><p class="tiny muted sans">Choose a different time, or move it anyway and keep the overlap visible to decide later.</p>`}</div>
-   <div class="mf"><button class="btn" data-act="close">Cancel</button>${r.ok ? '' : `<button class="btn" id="mvForce">Move anyway (keep overlap)</button>`}${r.ok ? `<button class="btn primary" id="mvApply">Apply ${r.changes.length > 1 ? r.changes.length + ' changes' : 'move'}</button>` : ''}</div>`, m => {
-    if (r.ok) $('#mvApply', m).onclick = () => { closeModal(); applyChanges('move ' + b.title, r.changes); };
-    else $('#mvForce', m).onclick = () => { closeModal(); applyChanges('move ' + b.title, [{ id, to: ns }]); };
+   <div class="mf"><button class="btn" data-act="close">Cancel</button><button class="btn ${r.ok ? '' : 'primary'}" id="mvForce">${r.ok ? 'Move only this block' : 'Move anyway (keep overlap)'}</button>${r.ok ? `<button class="btn primary" id="mvApply">Apply ${r.changes.length > 1 ? r.changes.length + ' changes' : 'move'}</button>` : ''}</div>`, m => {
+    if (r.ok) $('#mvApply', m).onclick = () => { closeModal(); applyChanges('move ' + b.title, r.changes, nd); };
+    $('#mvForce', m).onclick = () => { closeModal(); applyChanges('move ' + b.title, [{ id, to: ns }], nd); };
+  });
+}
+
+/* ---------- week grid: drag a block to another time or day ---------- */
+function wireWeekDrag() {
+  const wk = $('.wk'); if (!wk) return;
+  const r0 = +wk.dataset.r0, px = +wk.dataset.px;
+  $$('.blk[data-wblk]', wk).forEach(el => {
+    const b = S.blocks.find(x => x.id === el.dataset.wblk); if (!b) return;
+    const start = (x0, y0) => {
+      const rect0 = el.getBoundingClientRect(), grabOff = y0 - rect0.top, label = el.querySelector('.bt'), orig = label.textContent;
+      let target = null; el.classList.add('dragging');
+      return {
+        move(x, y) {
+          el.style.transform = `translate(${x - x0}px, ${y - y0}px)`;
+          el.style.pointerEvents = 'none';
+          const col = document.elementsFromPoint(x, y).map(n => n.closest && n.closest('.col[data-date]')).find(Boolean);
+          el.style.pointerEvents = '';
+          if (!col) return;
+          const top = y - grabOff - col.getBoundingClientRect().top, ns = clamp(Math.round((top / px + r0) / 15) * 15, 0, 1440 - (b.end - b.start));
+          target = { date: col.dataset.date, start: ns }; label.textContent = `${DOW[dow(target.date)]} ${fmtTimeShort(ns)} · ${b.title}`;
+        },
+        end() {
+          el.classList.remove('dragging'); el.style.transform = ''; label.textContent = orig;
+          if (!target || (target.date === b.date && target.start === b.start)) return false;
+          reviewMove(b.id, target.start, target.date); return true;
+        },
+      };
+    };
+    el.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch' || e.button !== 0 || b.done) return;
+      const x0 = e.clientX, y0 = e.clientY; let d = null; el.setPointerCapture(e.pointerId);
+      const mv = ev => { if (!d && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return; d = d || start(x0, y0); d.move(ev.clientX, ev.clientY); };
+      const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); if (!(d && d.end())) openBlockEditor(b.id); };
+      el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    });
+    el.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0], x0 = t.clientX, y0 = t.clientY; let d = null, cancelled = false;
+      const timer = b.done ? null : setTimeout(() => { d = start(x0, y0); el.classList.add('lifted'); if (navigator.vibrate) navigator.vibrate(12); }, 380);
+      const mv = ev => { const p = ev.touches[0]; if (d) { ev.preventDefault(); d.move(p.clientX, p.clientY); } else if (Math.hypot(p.clientX - x0, p.clientY - y0) > 8) { cancelled = true; clearTimeout(timer); } };
+      const end = ev => { clearTimeout(timer); el.removeEventListener('touchmove', mv); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); el.classList.remove('lifted');
+        if (d) { ev.preventDefault(); d.end(); } else if (!cancelled && ev.type === 'touchend') { ev.preventDefault(); openBlockEditor(b.id); } };
+      el.addEventListener('touchmove', mv, { passive: false }); el.addEventListener('touchend', end); el.addEventListener('touchcancel', end);
+    }, { passive: true });
   });
 }
 
@@ -1268,23 +1316,24 @@ const whoOpts = () => [...people(), 'Both', 'Not specified'];
 VIEWS.week = () => {
   const d = R.date, ws = weekStart(d), days = [...Array(7)].map((_, i) => addDays(ws, i)), px = .7;
   const all = days.flatMap(x => dayBlocks(x)); const [r0, r1] = range(all);
-  let grid = `<div class="wk"><div class="wh" style="cursor:default"></div>${days.map(x => `<div class="wh ${x === d ? 'sel' : ''}" data-act="openDay" data-d="${x}">${DOW[dow(x)]} ${+x.slice(8)}${x === todayISO() ? ' •' : ''}</div>`).join('')}`;
+  let grid = `<div class="wk" data-r0="${r0}" data-px="${px}"><div class="wh" style="cursor:default"></div>${days.map(x => `<div class="wh ${x === d ? 'sel' : ''}" data-act="openDay" data-d="${x}">${DOW[dow(x)]} ${+x.slice(8)}${x === todayISO() ? ' •' : ''}</div>`).join('')}`;
   grid += `<div class="gut" style="height:${(r1 - r0) * px}px">${[...Array((r1 - r0) / 60 + 1)].map((_, i) => `<span style="top:${i * 60 * px}px">${fmtTimeShort(r0 + i * 60)}</span>`).join('')}</div>`;
   for (const x of days) {
     const bl = dayBlocks(x), lay = laneLayout(bl), cf = conflictsOn(x).ids;
-    grid += `<div class="col" style="height:${(r1 - r0) * px}px">${[...Array((r1 - r0) / 60)].map((_, i) => `<div class="hl" style="top:${i * 60 * px}px"></div>`).join('')}${bl.map(b => { const L = lay.get(b.id), w = 100 / L.n; return `<div class="blk ${b.kind} ${b.status ? 'st-' + b.status : ''} ${b.done ? 'done' : ''} ${cf.has(b.id) ? 'conflict' : ''}" data-act="openBlock" data-id="${b.id}" title="${esc(b.title)} ${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)}" style="--bc:${catColor(catOf(b))};top:${(b.start - r0) * px}px;height:${Math.max(12, (b.end - b.start) * px - 2)}px;left:calc(${L.lane * w}% + 2px);width:calc(${w}% - 4px);right:auto"><div class="bt">${esc(b.title)}</div></div>`; }).join('')}</div>`;
+    grid += `<div class="col" data-date="${x}" style="height:${(r1 - r0) * px}px">${[...Array((r1 - r0) / 60)].map((_, i) => `<div class="hl" style="top:${i * 60 * px}px"></div>`).join('')}${bl.map(b => { const L = lay.get(b.id), w = 100 / L.n; return `<div class="blk ${b.kind} ${b.status ? 'st-' + b.status : ''} ${b.done ? 'done' : ''} ${cf.has(b.id) ? 'conflict' : ''}" data-wblk="${b.id}" title="${esc(b.title)} ${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)}" style="--bc:${catColor(catOf(b))};top:${(b.start - r0) * px}px;height:${Math.max(12, (b.end - b.start) * px - 2)}px;left:calc(${L.lane * w}% + 2px);width:calc(${w}% - 4px);right:auto"><div class="bt">${esc(b.title)}</div></div>`; }).join('')}</div>`;
   }
   grid += '</div>';
   // month
   const m0 = d.slice(0, 8) + '01', gs = weekStart(m0), cells = [...Array(42)].map((_, i) => addDays(gs, i));
   const month = `<div class="month">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<div class="mh">${x}</div>`).join('')}${cells.map(x => { const bl = dayBlocks(x), maj = bl.filter(b => b.kind !== 'flexible'); return `<div class="mc ${monthKey(x) !== monthKey(d) ? 'out' : ''} ${x === d ? 'sel' : ''} ${x === todayISO() ? 'today' : ''}" data-act="openDay" data-d="${x}"><span class="n">${+x.slice(8)}</span>${maj.slice(0, 2).map(b => `<div class="ev"><span class="dot" style="background:${catColor(catOf(b))}"></span>${esc(b.title)}</div>`).join('')}${bl.length > maj.slice(0, 2).length ? `<div class="muted">+${bl.length - maj.slice(0, 2).length} more</div>` : ''}</div>`; }).join('')}</div>`;
-  return `<div class="sec-head"><div><h2>Week of ${fmtDate(ws, { month: 'long', day: 'numeric' })}</h2><p class="sans small">Same plan as Today — click a block to edit it, a day to open it.</p></div>
+  return `<div class="sec-head"><div><h2>Week of ${fmtDate(ws, { month: 'long', day: 'numeric' })}</h2><p class="sans small">Same plan as Today — tap a block to edit it, drag it (press and hold on a phone) to move it to another time or day.</p></div>
     <div class="row"><button class="btn" data-act="weekNav" data-n="-7">‹ Previous</button><button class="btn" data-act="pickDay" data-d="${todayISO()}">This week</button><button class="btn" data-act="weekNav" data-n="7">Next ›</button></div></div>
     ${grid}
     <div class="sec-head" style="margin-top:2rem"><h2>${fmtDate(m0, { month: 'long', year: 'numeric' })}</h2><div class="row"><button class="btn" data-act="monNav" data-n="-1">‹</button><button class="btn" data-act="monNav" data-n="1">›</button></div></div>
     ${month}<p class="tiny muted sans">Month cells show fixed and protected commitments first. A quiet cell isn't proof of a free day.</p>
     <div class="row" style="margin-top:1rem;gap:1rem">${Object.entries(CATS).map(([k, c]) => `<span class="small sans row" style="gap:.3rem"><span class="dot" style="background:${catColor(k)}"></span>${c.label}</span>`).join('')}</div>`;
 };
+VIEWS.week_after = () => wireWeekDrag();
 Object.assign(ACT, {
   openDay: el => go('today', el.dataset.d),
   monNav: el => { const [y, m] = R.date.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1 + +el.dataset.n, 1)); go('week', iso(dt)); },
@@ -2291,6 +2340,7 @@ function voiceCard() {
     </div></details>`}
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
+    <label class="row small sans"><input type="checkbox" data-b="settings.briefingOn" ${S.settings.briefingOn !== false ? 'checked' : ''}> Show a daily briefing the first time the app opens each day</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceHandsFree" ${S.settings.voiceHandsFree !== false ? 'checked' : ''}> Keep listening after each reply — a conversation; say “that's all” or “thanks” to finish</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
     <div class="row" style="align-items:flex-end">
@@ -2311,6 +2361,177 @@ ACT.saveVoiceKey = () => { const v = $('#vKey').value.trim(); try { if (v) local
 setTimeout(() => { if (sync.cfg || localVoiceKey()) voiceKey().catch(() => { }); }, 2500);   // warm up so the first question doesn't wait
 ACT.saveOpenAIKey = () => { const v = $('#oaKey').value.trim(); try { if (v) localStorage.setItem(OPENAI_LOCAL, v); else localStorage.removeItem(OPENAI_LOCAL); localStorage.removeItem(OPENAI_COMBO); } catch (e) { } if (v && S.settings.voiceProvider !== 'openai') commit('settings', 'voice provider', st => { st.voiceProvider = 'openai'; }); render(); toast(v ? 'ChatGPT key saved on this device' : 'ChatGPT key removed from this device'); };
 ACT.previewVoice = () => { unlockSpeech(); speak('Hi Jordan. I added tea with Sarah on Friday, November 20th, at 3 PM.', true); };
+/* ================= Daily briefing ================= */
+const BRIEF_KEY = 'lifegarden.brief';
+const greetWord = () => { const h = Math.floor(nowMin() / 60); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
+const firstName = () => (people()[0] || 'Jordan').split(' ')[0];
+const STATUS_WORD = { confirmed: 'confirmed', proposed: 'suggested in the draft', needs: 'needs confirming', source: 'from the source plan', sourceproposed: 'from the source plan, with suggested changes' };
+
+/* ----- what the briefing is based on ----- */
+function briefData(d) {
+  const bl = dayBlocks(d).filter(b => !b.sleep && catOf(b) !== 'sleep');
+  const t = tasksFor(d).filter(x => !x.done);
+  return {
+    date: d, weekday: DOW[dow(d)], now: d === todayISO() ? fmtTime(nowMin()) : null,
+    day_note: S.daynotes[d] || null,
+    blocks: bl.map(b => ({ time: `${fmtTime(b.start)}–${fmtTime(b.end)}`, title: b.title, kind: b.kind, ...(b.status ? { status: STATUS_WORD[b.status] } : {}), ...(b.done ? { done: true } : {}) })),
+    overlaps: conflictsOn(d).pairs.map(([a, b]) => `${a.title} and ${b.title}`),
+    focus_steps: t.filter(x => x.focus && x.focus[d]).map(x => x.title),
+    next_steps: t.slice(0, 8).map(x => x.title + (x.status && x.status !== 'Confirmed' ? ` (${x.status})` : '')),
+    daily_care: S.routines.filter(r => r.days.includes(dow(d))).map(r => r.title + (r.done && r.done[d] ? ' (done)' : '')),
+  };
+}
+function weekData(d) {
+  const ws = weekStart(d), days = [...Array(7)].map((_, i) => addDays(ws, i)), we = days[6];
+  const tw = S.together[ws];
+  return {
+    week_of: ws, today: todayISO(),
+    days: days.map(x => ({ date: x, weekday: DOW[dow(x)], note: (S.daynotes[x] || {}).note || null,
+      commitments: dayBlocks(x).filter(b => !b.sleep && (b.kind !== 'flexible' || b.status === 'confirmed' || !b.status)).map(b => `${fmtTimeShort(b.start)} ${b.title}${b.status ? ' [' + STATUS_WORD[b.status] + ']' : ''}`).slice(0, 10),
+      overlaps: conflictsOn(x).pairs.length })),
+    shared_priorities: tw && tw.pri ? tw.pri.filter(p => p.text).map(p => p.text + (p.done ? ' (done)' : '')) : [],
+    deadlines: [...S.projects.filter(p => p.deadline && p.deadline >= ws && p.deadline <= addDays(we, 14)).map(p => `${p.name} — ${fmtShort(p.deadline)}`),
+      ...S.opps.filter(o => o.deadline && o.deadline >= ws && o.deadline <= addDays(we, 14) && o.status !== 'Not for me').map(o => `${o.title || 'Opportunity'} — ${fmtShort(o.deadline)}`)],
+    money_due: S.money.entries.filter(e => e.date >= ws && e.date <= we && !e.settled).map(e => `${e.type === 'income' ? 'Expected in' : 'Due'}: ${e.desc} ${money(entryAmt(e) == null ? null : Math.abs(entryAmt(e)))} (${fmtShort(e.date)})`),
+    open_questions: S.tasks.filter(x => !x.done && x.status === 'Needs verification').slice(0, 6).map(x => x.title),
+  };
+}
+
+/* ----- a plain version that needs no AI ----- */
+function localDay(d) {
+  const bd = briefData(d), bl = dayBlocks(d).filter(b => !b.sleep && catOf(b) !== 'sleep');
+  const key = bl.filter(b => b.kind !== 'flexible' || b.status === 'confirmed');
+  return {
+    greeting: `${greetWord()}, ${firstName()}.`,
+    summary: bl.length ? `${DOW[dow(d)]} has ${bl.length} block${bl.length > 1 ? 's' : ''}, from ${fmtTime(bl[0].start)} to ${fmtTime(bl[bl.length - 1].end)}.` : 'Nothing is scheduled today — a good day to choose one thing that matters.',
+    schedule: (key.length ? key : bl).slice(0, 8).map(b => ({ time: fmtTimeShort(b.start), what: b.title + (b.status && b.status !== 'confirmed' ? ` (${STATUS_WORD[b.status]})` : '') })),
+    heads_up: [...bd.overlaps.map(o => `Overlap: ${o}`), ...bl.filter(b => b.status === 'needs').map(b => `Needs confirming: ${b.title}`)].slice(0, 5),
+    focus: bd.focus_steps[0] || bd.next_steps[0] || '',
+    encouragement: '',
+  };
+}
+function localWeek(d) {
+  const w = weekData(d);
+  return {
+    summary: `Week of ${fmtShort(w.week_of)}.`,
+    days: w.days.filter(x => x.commitments.length).map(x => ({ day: `${x.weekday} ${+x.date.slice(8)}`, highlights: x.commitments.slice(0, 4) })),
+    heads_up: [...w.deadlines.map(x => 'Deadline: ' + x), ...w.days.filter(x => x.overlaps).map(x => `${x.weekday}: ${x.overlaps} overlap${x.overlaps > 1 ? 's' : ''} to decide`)].slice(0, 6),
+  };
+}
+
+/* ----- AI version (ChatGPT or Gemini, whichever the voice assistant uses) ----- */
+const DAY_SCHEMA = { type: 'object', additionalProperties: false, required: ['greeting', 'summary', 'schedule', 'heads_up', 'focus', 'encouragement'], properties: {
+  greeting: { type: 'string', description: 'Warm one-line greeting using her name and the time of day.' },
+  summary: { type: 'string', description: 'Two short sentences: the shape of the day.' },
+  schedule: { type: 'array', description: 'Up to 8 key moments in order. Skip routine filler.', items: { type: 'object', additionalProperties: false, required: ['time', 'what'], properties: { time: { type: 'string' }, what: { type: 'string' } } } },
+  heads_up: { type: 'array', description: 'Up to 4 things to watch: overlaps, items needing confirmation, deadlines.', items: { type: 'string' } },
+  focus: { type: 'string', description: 'One concrete suggestion for what to prioritise today.' },
+  encouragement: { type: 'string', description: 'One gentle, genuine sentence. No clichés.' } } };
+const WEEK_SCHEMA = { type: 'object', additionalProperties: false, required: ['summary', 'days', 'heads_up'], properties: {
+  summary: { type: 'string', description: 'Two sentences on the shape of the week.' },
+  days: { type: 'array', description: 'Only days with something important.', items: { type: 'object', additionalProperties: false, required: ['day', 'highlights'], properties: { day: { type: 'string', description: 'e.g. "Wed 18"' }, highlights: { type: 'array', items: { type: 'string' } } } } },
+  heads_up: { type: 'array', description: 'Up to 5: deadlines, overlaps, money due, open questions.', items: { type: 'string' } } } };
+const BRIEF_RULES = `You write Jordan's daily briefing inside her planner, Life Garden. Be warm, calm and brief — this is read on a phone, maybe aloud.
+Use only the facts given; never invent events, times or people. Times in 12-hour form (9:30 AM). Items marked "suggested in the draft" are proposals from an old working draft, not bookings — call them suggestions if you mention them.
+No medical, legal or financial advice. No exclamation-mark overload.`;
+function toGeminiSchema(s) {
+  if (Array.isArray(s)) return s.map(toGeminiSchema);
+  if (!s || typeof s !== 'object') return s;
+  const o = {}; for (const [k, v] of Object.entries(s)) { if (k === 'additionalProperties') continue; o[k] = k === 'type' ? String(v).toUpperCase() : (k === 'properties' ? Object.fromEntries(Object.entries(v).map(([a, b]) => [a, toGeminiSchema(b)])) : toGeminiSchema(v)); }
+  return o;
+}
+async function aiJSON(system, user, schema, name) {
+  if (provider() === 'openai') {
+    const key = await openaiKey(); if (!key) return null;
+    for (const m of ['gpt-4.1-mini', 'gpt-4o-mini', 'gpt-5-mini']) {
+      const body = { model: m, messages: [{ role: 'system', content: system }, { role: 'user', content: user }], response_format: { type: 'json_schema', json_schema: { name, strict: true, schema } } };
+      if (/^gpt-5/.test(m)) body.reasoning_effort = 'minimal'; else body.temperature = 0.5;
+      const { r, txt } = await oaFetch(key, 'chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 30000);
+      if (r.status === 404 || r.status === 400) continue;
+      if (!r.ok) return null;
+      return JSON.parse(JSON.parse(txt).choices[0].message.content);
+    }
+    return null;
+  }
+  const key = await voiceKey().catch(() => null); if (!key) return null;
+  for (const m of ['gemini-flash-lite-latest', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.5-flash']) {
+    const body = { systemInstruction: { parts: [{ text: system }] }, contents: [{ role: 'user', parts: [{ text: user }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: toGeminiSchema(schema), temperature: 0.5 } };
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
+    if (r.status === 404 || r.status === 400) continue;
+    if (!r.ok) return null;
+    const j = await r.json(); return JSON.parse(j.candidates[0].content.parts.map(p => p.text || '').join(''));
+  }
+  return null;
+}
+
+/* ----- the popup ----- */
+const briefCache = () => { try { return JSON.parse(localStorage.getItem(BRIEF_KEY) || '{}'); } catch (e) { return {}; } };
+const saveBrief = o => { try { localStorage.setItem(BRIEF_KEY, JSON.stringify(o)); } catch (e) { } };
+const brief = { tab: 'day', day: null, week: null, ai: { day: false, week: false } };
+function briefSpeech() {
+  if (brief.tab === 'week' && brief.week) { const w = brief.week; return [w.summary, ...w.days.map(x => `${x.day}: ${x.highlights.join('; ')}.`), ...(w.heads_up.length ? ['Heads up: ' + w.heads_up.join('. ')] : [])].join(' '); }
+  const b = brief.day; if (!b) return '';
+  return [b.greeting, b.summary, ...b.schedule.map(x => `${x.time}, ${x.what}.`), ...(b.heads_up.length ? ['Heads up: ' + b.heads_up.join('. ') + '.'] : []), b.focus ? `Focus: ${b.focus}.` : '', b.encouragement].filter(Boolean).join(' ');
+}
+function briefHTML() {
+  const list = a => a && a.length ? `<ul style="margin:.2rem 0 0;padding-left:1.1rem">${a.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : '';
+  let body;
+  if (brief.tab === 'week') {
+    const w = brief.week;
+    body = !w ? '<p class="muted">Putting the week together…</p>' : `<p style="margin:0 0 .6rem">${esc(w.summary)}</p>
+      ${w.days.map(x => `<div style="padding:.45rem 0;border-top:1px solid var(--line)"><div class="sans small" style="font-weight:600;color:var(--accent2)">${esc(x.day)}</div>${list(x.highlights)}</div>`).join('') || '<p class="muted">A quiet week on paper.</p>'}
+      ${w.heads_up.length ? `<div class="card flat" style="margin-top:.7rem;padding:.6rem .8rem;border-color:color-mix(in srgb,var(--warn) 45%,var(--line))"><b class="small sans">Heads up</b>${list(w.heads_up)}</div>` : ''}`;
+  } else {
+    const b = brief.day;
+    body = `<h3 style="font-size:1.35rem;margin:0 0 .3rem">${esc(b.greeting)}</h3><p style="margin:0 0 .6rem">${esc(b.summary)}</p>
+      ${b.schedule.length ? `<div class="stack" style="gap:.25rem">${b.schedule.map(x => `<div class="row" style="flex-wrap:nowrap;align-items:baseline;gap:.7rem"><span class="sans small" style="min-width:4.6rem;color:var(--accent2);font-weight:600">${esc(x.time)}</span><span>${esc(x.what)}</span></div>`).join('')}</div>` : ''}
+      ${b.heads_up.length ? `<div class="card flat" style="margin-top:.7rem;padding:.6rem .8rem;border-color:color-mix(in srgb,var(--warn) 45%,var(--line))"><b class="small sans">Heads up</b>${list(b.heads_up)}</div>` : ''}
+      ${b.focus ? `<p style="margin:.7rem 0 0"><b>Focus:</b> ${esc(b.focus)}</p>` : ''}${b.encouragement ? `<p class="muted" style="margin:.5rem 0 0;font-style:italic">${esc(b.encouragement)}</p>` : ''}`;
+  }
+  const working = brief.tab === 'week' ? !brief.ai.week && brief.loading : !brief.ai.day && brief.loading;
+  return `<div class="mh"><div class="tabs" style="margin:0"><button aria-pressed="${brief.tab === 'day'}" data-btab="day">☀ Today</button><button aria-pressed="${brief.tab === 'week'}" data-btab="week">▦ This week</button></div><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+    <div class="mb">${body}${working ? '<p class="tiny muted sans" style="margin-top:.8rem">✨ Writing a personal rundown…</p>' : ''}</div>
+    <div class="mf"><button class="btn" id="bSpeak">🔊 Read it to me</button><button class="btn" id="bDay">Open ${brief.tab === 'week' ? 'Week' : 'Today'}</button><button class="btn primary" data-act="close">Start my day</button></div>`;
+}
+function drawBrief() {
+  const m = $('#dlgBody'); if (!m || !m.querySelector('[data-btab]')) return;
+  m.innerHTML = briefHTML(); wireBrief(m);
+}
+function wireBrief(m) {
+  $$('[data-btab]', m).forEach(b => b.onclick = () => { brief.tab = b.dataset.btab; drawBrief(); if (brief.tab === 'week' && !brief.ai.week) loadWeek(); });
+  $('#bSpeak', m).onclick = () => { unlockSpeech(); speak(briefSpeech(), true); };
+  $('#bDay', m).onclick = () => { const t = brief.tab; stopSpeaking(); closeModal(); go(t === 'week' ? 'week' : 'today', todayISO()); };
+}
+async function loadWeek() {
+  const t0 = todayISO(), c = briefCache(), ws = weekStart(t0);
+  if (c.weekOf === ws && c.week && c.weekDay === t0) { brief.week = c.week; brief.ai.week = true; return drawBrief(); }
+  brief.week = brief.week || localWeek(t0); brief.loading = true; drawBrief();
+  try { const w = await aiJSON(BRIEF_RULES, 'Her week (JSON):\n' + JSON.stringify(weekData(t0)) + '\n\nWrite the week-ahead rundown. Today is ' + t0 + '.', WEEK_SCHEMA, 'week_briefing'); if (w) { brief.week = w; brief.ai.week = true; saveBrief({ ...briefCache(), weekOf: ws, weekDay: t0, week: w }); } } catch (e) { console.warn('week briefing', e); }
+  brief.loading = false; drawBrief();
+}
+async function openBriefing(manual) {
+  const t0 = todayISO(), c = briefCache();
+  brief.tab = 'day'; brief.ai = { day: false, week: false }; brief.week = null;
+  if (c.date === t0 && c.day) { brief.day = c.day; brief.ai.day = true; } else { brief.day = localDay(t0); brief.loading = true; }
+  openModal(briefHTML(), wireBrief);
+  saveBrief({ ...briefCache(), shown: t0 });
+  if (!brief.ai.day) {
+    try {
+      const d = await aiJSON(BRIEF_RULES, `It is ${fmtTime(nowMin())} on ${fmtDate(t0)}. Her name is ${firstName()}.\nToday (JSON):\n` + JSON.stringify(briefData(t0)) + '\n\nWrite today\'s briefing.', DAY_SCHEMA, 'day_briefing');
+      if (d) { brief.day = d; brief.ai.day = true; saveBrief({ ...briefCache(), date: t0, day: d }); }
+    } catch (e) { console.warn('day briefing', e); }
+    brief.loading = false; drawBrief();
+  }
+}
+ACT.briefing = () => openBriefing(true);
+
+/* once a day, when the app opens */
+setTimeout(() => {
+  if (S.settings.briefingOn === false || dlg().open || location.hash.startsWith('#connect=')) return;
+  if (!S.blocks.length && !S.tasks.length) return;                    // brand-new, empty plan
+  if (briefCache().shown === todayISO()) return;
+  openBriefing(false);
+}, 1600);
 /* ================= boot ================= */
 loadLocal();
 if (!S.capacity.whatIf) S.capacity.whatIf = {};
