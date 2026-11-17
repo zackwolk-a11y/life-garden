@@ -527,7 +527,13 @@ async function api(method, payload) {
     const r = method === 'GET'
       ? await fetch(`${c.url}?k=${encodeURIComponent(c.key)}${payload && payload.h ? '&h=' + encodeURIComponent(payload.h) : ''}`, { signal: ctrl.signal, redirect: 'follow' })
       : await fetch(c.url, { method: 'POST', body: JSON.stringify({ k: c.key, ...payload }), headers: { 'Content-Type': 'text/plain;charset=utf-8' }, signal: ctrl.signal, redirect: 'follow' });
-    const txt = await r.text(); let o; try { o = JSON.parse(txt); } catch (e) { throw new Error(/<html/i.test(txt) ? 'The Sheet link isn’t a web app deployment open to “Anyone”' : 'Unexpected reply from the Sheet'); }
+    const txt = await r.text(); let o;
+    try { o = JSON.parse(txt); } catch (e) {
+      const msg = (txt.match(/<div[^>]*(?:errorMessage|error-message)[^>]*>([\s\S]*?)<\/div>/i) || txt.match(/<title>([\s\S]*?)<\/title>/i) || [])[1];
+      const clean = msg ? msg.replace(/<[^>]+>/g, ' ').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim() : '';
+      if (/sign in|ServiceLogin|accounts\.google/i.test(txt) && !clean.match(/Exception|Error/)) throw new Error('The Sheet link needs “Who has access: Anyone” in Deploy → Manage deployments');
+      throw new Error('Sheet script error: ' + (clean || 'unexpected reply').slice(0, 140));
+    }
     if (!o.ok) throw new Error({ passcode: 'Wrong passcode', locked: 'Too many wrong passcodes — the Sheet is locked for 30 minutes', setup: 'The script still has the placeholder passcode — change it, save, and deploy a new version' }[o.error] || o.error || 'Sheet error');
     return o;
   } finally { clearTimeout(to); }
@@ -550,18 +556,16 @@ async function syncNow(opts = {}) {
   sync.busy = true; const rev = sync.localRev;
   try {
     const ops = diffOps(snapshotRows(), sync.base);
-    const today = todayISO(), wantBackup = sync.backupDay !== today;
-    if (ops || wantBackup) {
+    if (ops) {
       setStatus('saving', 'Syncing…');
-      const data = await api('POST', { ops: ops || {}, backup: wantBackup ? { app: 'life-garden', version: 1, exported: new Date().toISOString(), data: S } : undefined });
-      if (wantBackup) sync.backupDay = today;
-      receive(data, rev);
+      receive(await api('POST', { ops }), rev);
     } else {
       if (!opts.quiet) setStatus('saving', 'Checking for changes…');
       receive(await api('GET', { h: sync.hash }), rev);
     }
     sync.lastPull = Date.now();
     setStatus('saved', 'Synced with Google Sheet');
+    if (sync.backupDay !== todayISO()) { sync.backupDay = todayISO(); saveSyncState(); setTimeout(() => api('POST', { ops: {}, backup: { app: 'life-garden', version: 1, exported: new Date().toISOString(), data: S } }).catch(e => { console.warn('daily Drive backup failed', e); sync.backupDay = null; saveSyncState(); }), 4000); }
   } catch (e) {
     console.warn('sync', e);
     setStatus('error', e.name === 'AbortError' ? 'Sheet is slow — will retry' : (e.message || 'Sync failed') + ' · saved on this device');
