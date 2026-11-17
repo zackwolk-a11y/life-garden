@@ -522,7 +522,7 @@ function diffOps(cur, base) {
 const isServerEmpty = d => !Object.values(d.tables || {}).some(r => r.length) && !Object.keys(d.json || {}).length;
 async function api(method, payload) {
   const c = sync.cfg; if (!c) throw new Error('not connected');
-  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), 45000);
+  const ctrl = new AbortController(); const to = setTimeout(() => ctrl.abort(), method === 'GET' ? 45000 : 90000);
   try {
     const r = method === 'GET'
       ? await fetch(`${c.url}?k=${encodeURIComponent(c.key)}${payload && payload.h ? '&h=' + encodeURIComponent(payload.h) : ''}`, { signal: ctrl.signal, redirect: 'follow' })
@@ -538,9 +538,9 @@ async function api(method, payload) {
     return o;
   } finally { clearTimeout(to); }
 }
-function receive(data, revAtSend) {
+function receive(data, revAtSend, sent) {
   sync.hash = data.hash; if (data.sheetUrl) sync.cfg.sheetUrl = data.sheetUrl;
-  if (data.same) { saveSyncState(); return; }
+  if (data.same) { if (sent) sync.base = sent; saveSyncState(); return; }   // after an upload nobody else touched: the Sheet now matches what was sent
   if (sync.localRev === revAtSend) {
     const before = JSON.stringify(S); adoptServer(data); sync.base = snapshotRows();
     if (JSON.stringify(S) !== before) { saveLocal(); softRender(); }
@@ -555,10 +555,10 @@ async function syncNow(opts = {}) {
   if (!navigator.onLine) { setStatus('local', 'Offline · saved on this device'); return; }
   sync.busy = true; const rev = sync.localRev;
   try {
-    const ops = diffOps(snapshotRows(), sync.base);
+    const snap = snapshotRows(), ops = diffOps(snap, sync.base);
     if (ops) {
       setStatus('saving', 'Syncing…');
-      receive(await api('POST', { ops }), rev);
+      receive(await api('POST', { ops, h: sync.hash }), rev, snap);
     } else {
       if (!opts.quiet) setStatus('saving', 'Checking for changes…');
       receive(await api('GET', { h: sync.hash }), rev);

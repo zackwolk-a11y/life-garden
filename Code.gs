@@ -100,8 +100,9 @@ function checkKey_(k) {
 function doGet(e) {
   const p = e.parameter || {};
   const bad = checkKey_(p.k); if (bad) return out_({ ok: false, error: bad });
+  if (p.h && p.h === token_()) return out_({ ok: true, same: true, hash: p.h });   // nothing changed: answer without reading the Sheet
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
-  try { return out_(pull_(p.h)); } finally { lock.releaseLock(); }
+  try { return out_(pull_()); } finally { lock.releaseLock(); }
 }
 function doPost(e) {
   let body; try { body = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
@@ -111,18 +112,28 @@ function doPost(e) {
     const key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
     return out_(key ? { ok: true, agentConfig: { key, models: GEMINI_MODELS, rules: AGENT_RULES, schema: AGENT_SCHEMA } } : { ok: false, error: 'nokey' });
   }
-  const lock = LockService.getScriptLock(); lock.waitLock(25000);
+  if (body.backup && !body.ops) { saveBackup_(body.backup); return out_({ ok: true }); }
+  const lock = LockService.getScriptLock(); lock.waitLock(28000);
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const untouched = body.h && body.h === token_();          // no one else changed the Sheet since this device last synced
     const ops = body.ops || {};
     for (const [name, op] of Object.entries(ops.tables || {})) if (TABLES[name]) applyTable_(ss, TABLES[name], op.upsert || [], op.del || []);
     if (ops.json && Object.keys(ops.json).length) writeJson_(ss, ops.json);
-    if (body.backup) saveBackup_(body.backup);
+    if (body.backup) { try { saveBackup_(body.backup); } catch (e) { } }
     SpreadsheetApp.flush();
+    if (untouched) return out_({ ok: true, same: true, hash: token_(true) });
     return out_(pull_());
   } finally { lock.releaseLock(); }
 }
 function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+/* ---------------- change token ---------------- */
+function token_(afterWrite) {
+  if (afterWrite) Utilities.sleep(400);                       // let Drive record our own write first
+  try { return 'm' + DriveApp.getFileById(SpreadsheetApp.getActiveSpreadsheet().getId()).getLastUpdated().getTime(); }
+  catch (e) { return 'x' + Date.now(); }                       // unknown → forces a full read next time
+}
 
 /* ---------------- tables ---------------- */
 function ensureTable_(ss, t) {
@@ -152,6 +163,28 @@ function readTable_(ss, t) {
   return { sh, head, rows };
 }
 function applyTable_(ss, t, upsert, del) {
+  if (upsert.length + del.length > 60) return rewriteTable_(ss, t, upsert, del);   // big batches: one rewrite is faster
+  const { sh, head } = ensureTable_(ss, t);
+  let grew = false;
+  upsert.forEach(u => Object.keys(u).forEach(c => { if (head.indexOf(c) < 0) { head.push(c); grew = true; } }));
+  if (grew) sh.getRange(1, 1, 1, head.length).setValues([head]);
+  const keyCol = head.indexOf(t.key) + 1, n = Math.max(sh.getLastRow() - 1, 0);
+  const keys = n ? sh.getRange(2, keyCol, n, 1).getDisplayValues().map(r => r[0]) : [];
+  const rowOf = {}; keys.forEach((k, i) => { if (k && !rowOf[k]) rowOf[k] = i + 2; });
+  const appends = [];
+  upsert.forEach(u => {
+    const k = u[t.key]; if (!k) return;
+    const r = rowOf[k];
+    if (r) {
+      const cur = sh.getRange(r, 1, 1, head.length).getDisplayValues()[0];
+      const row = head.map((h, j) => u[h] == null ? cur[j] : String(u[h]));
+      const rg = sh.getRange(r, 1, 1, head.length); rg.setNumberFormat('@'); rg.setValues([row]);
+    } else appends.push(head.map(h => u[h] == null ? '' : String(u[h])));
+  });
+  del.map(k => rowOf[k]).filter(Boolean).sort((x, y) => y - x).forEach(r => sh.deleteRow(r));
+  if (appends.length) { const rg = sh.getRange(sh.getLastRow() + 1, 1, appends.length, head.length); rg.setNumberFormat('@'); rg.setValues(appends); }
+}
+function rewriteTable_(ss, t, upsert, del) {
   const { sh, head, rows } = readTable_(ss, t);
   const dels = {}; del.forEach(k => dels[k] = true);
   const map = {}; const order = [];
@@ -187,14 +220,12 @@ function writeJson_(ss, sections) {
 }
 
 /* ---------------- pull + backups ---------------- */
-function pull_(knownHash) {
+function pull_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const tables = {}; for (const [name, t] of Object.entries(TABLES)) tables[name] = readTable_(ss, t).rows;
   const json = readJson_(ss);
-  const payload = JSON.stringify({ tables, json });
-  const hash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, payload, Utilities.Charset.UTF_8));
-  if (knownHash && knownHash === hash) return { ok: true, same: true, hash };
-  return { ok: true, hash, tables, json, sheetUrl: ss.getUrl() };
+  SpreadsheetApp.flush();
+  return { ok: true, hash: token_(), tables, json, sheetUrl: ss.getUrl() };
 }
 function saveBackup_(data) {
   const it = DriveApp.getFoldersByName(BACKUP_FOLDER);
