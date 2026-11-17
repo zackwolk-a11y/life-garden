@@ -313,7 +313,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.17-c';
+const APP_VERSION = '2026.11.17-d';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -2063,6 +2063,7 @@ const VOICE_RULES = [
   'Money: add_money only when she states an amount. It is an estimate unless she says it was already paid or received.',
   'Questions about her plan ("what\'s on Thursday?") get a spoken answer and no actions.',
   'Never say you added, moved, finished or removed something unless that exact action is in "actions" — the app only changes what is in "actions".',
+  'If she asks about your voice, speed or the app itself: your reading voice and speed can be changed in Settings & backup → Voice assistant → Voice and Speed (iPhone voices or ChatGPT voices like Nova, Coral or Shimmer). Say that briefly and return no actions.',
   'Reply in one or two short, plain sentences suitable to be read aloud. Do not repeat every detail of the change; the app shows it on screen. Never give medical, legal or financial advice.',
 ].join('\n');
 
@@ -2260,12 +2261,12 @@ function voiceCard() {
       <p style="margin:0">1. Sign in at <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> → <b>Create new secret key</b> → copy it (starts with <code>sk-</code>). 2. Add a little credit under <b>Billing</b> — the API is pay-as-you-go and separate from a ChatGPT Plus subscription. 3. Paste the key here on each device:</p>
       <div class="row"><input id="oaKey" type="password" class="grow" placeholder="sk-…" value="${esc(localOpenAIKey())}" autocomplete="off"><button class="btn sm primary" data-act="saveOpenAIKey">Save</button></div>
       <p class="tiny muted sans" style="margin:0">Stored only on this device. Each request costs a fraction of a cent. OpenAI doesn't train on API requests by default.</p></div>` : ''}
-    <details class="disc"><summary>Turn it on (2 minutes, on a computer)</summary><div class="in small stack">
+    ${provider() === 'openai' ? '' : `<details class="disc"><summary>Turn it on (2 minutes, on a computer)</summary><div class="in small stack">
       <p><b>1.</b> Signed in as the Sheet's owner, open <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> and create an API key. Copy it.</p>
       <p><b>2.</b> Reload the Google Sheet. In its menu bar, open <b>Life Garden → Set voice assistant key…</b>, paste the key, OK. It tests the key and tells you if it works.</p>
       <p class="tiny muted sans">Set up the Sheet before today? Paste the latest script first (<button class="btn sm" data-act="copyScript">Copy the script</button> — it keeps your passcode), then <b>Deploy → Manage deployments → Edit → Version: New version</b>.</p>
       <p class="tiny muted sans">Privacy: on Gemini's free tier Google may use requests to improve its products; turning on billing in AI Studio stops that. Each request sends the recording plus about ten days of the plan, and typically costs well under a cent on the paid tier.</p>
-    </div></details>
+    </div></details>`}
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
@@ -2279,8 +2280,8 @@ function voiceCard() {
       <button class="btn sm" data-act="previewVoice">▶ Preview</button>
     </div>
     <p class="tiny muted sans" style="margin:0">iPhone voices: download nicer ones (marked Enhanced or Premium) in iPhone Settings → Accessibility → Spoken Content → Voices, then reopen the app. ChatGPT voices take about a second longer to start and cost a fraction of a cent per reply.</p>
-    <details class="disc"><summary>Speed: key on this device ${localVoiceKey() ? '✓' : ''}</summary><div class="in small stack"><p style="margin:0">For the fastest answers this device talks to Gemini directly. It normally fetches the key from the Sheet script; if the script hasn't been updated, paste the Gemini key here instead. It is stored only on this device.</p>
-      <div class="row"><input id="vKey" type="password" class="grow" placeholder="AIza…" value="${esc(localVoiceKey())}" autocomplete="off"><button class="btn sm" data-act="saveVoiceKey">Save</button></div></div></details></div>`;
+    ${provider() === 'openai' ? '' : `<details class="disc"><summary>Gemini key on this device ${localVoiceKey() ? '✓' : ''}</summary><div class="in small stack"><p style="margin:0">For the fastest answers this device talks to Gemini directly. It normally fetches the key from the Sheet script; if the script hasn't been updated, paste the Gemini key here instead. It is stored only on this device.</p>
+      <div class="row"><input id="vKey" type="password" class="grow" placeholder="AIza…" value="${esc(localVoiceKey())}" autocomplete="off"><button class="btn sm" data-act="saveVoiceKey">Save</button></div></div></details>`}</div>`;
 }
 ACT.voiceTry = () => openVoice(false);
 ACT.saveVoiceKey = () => { const v = $('#vKey').value.trim(); try { if (v) localStorage.setItem(LOCAL_KEY, v); else localStorage.removeItem(LOCAL_KEY); localStorage.removeItem(COMBO_KEY); } catch (e) { } render(); toast(v ? 'Key saved on this device' : 'Key removed from this device'); };
