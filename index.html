@@ -313,6 +313,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
+const APP_VERSION = '2026.11.17-b';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -1624,7 +1625,8 @@ function fromICS(text) {
 }
 VIEWS.backup = () => {
   const st = S.settings, counts = `${S.blocks.length} blocks · ${S.tasks.length} next steps · ${S.money.entries.length} money entries · ${S.opps.length} opportunities`;
-  return `<div class="sec-head"><div><h2>Settings & backup</h2><p class="sans small">${sync.cfg ? 'Synced with your Google Sheet — every phone connected to it, and Gemini in Sheets, works on the same plan.' : 'Saving on this device only. Connect a Google Sheet to share the plan between phones and let Gemini edit it.'}</p></div></div>
+  const syncLine = `<div class="card flat small sans" style="margin-bottom:1rem;padding:.6rem .9rem"><b>This device</b> · app version ${APP_VERSION} · ${S.blocks.length} time blocks · ${S.tasks.length} next steps · ${sync.cfg ? 'connected to the Sheet' + (sync.lastPull ? ', last synced ' + new Date(sync.lastPull).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : ', not synced yet this visit') : '<span style="color:var(--warn)">not connected — this is a separate plan</span>'}<br><span class="muted">Every device showing the same version and the same counts has the same plan.</span></div>`;
+  return syncLine + `<div class="sec-head"><div><h2>Settings & backup</h2><p class="sans small">${sync.cfg ? 'Synced with your Google Sheet — every phone connected to it, and Gemini in Sheets, works on the same plan.' : 'Saving on this device only. Connect a Google Sheet to share the plan between phones and let Gemini edit it.'}</p></div></div>
   <div class="grid2">
     ${sheetCard()}
     ${voiceCard()}
@@ -1826,7 +1828,11 @@ render();
 })();
 if (sync.cfg) syncNow({ quiet: true }); else setStatus('local', 'Saved on this device');
 setInterval(() => { if (R.view === 'today' && R.date === todayISO() && !dlg().open && !(document.activeElement && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName))) { const n = $('.tl .now'); const tl = $('.tl'); if (n && tl) n.style.top = (nowMin() - +tl.dataset.r0) * +tl.dataset.px + 'px'; } }, 60000);
-if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => { });
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  const hadController = !!navigator.serviceWorker.controller; let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadController && !reloaded && !dlg().open) { reloaded = true; location.reload(); } });   // a new version arrived: load it once
+  navigator.serviceWorker.register('sw.js').then(r => { r.update().catch(() => { }); document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') r.update().catch(() => { }); }); }).catch(() => { });
+}
 /* ================= Voice assistant ("Ask Life Garden") ================= */
 const voice = { rec: null, busy: false };
 document.body.insertAdjacentHTML('beforeend', '<button id="voiceFab" aria-label="Ask Life Garden by voice" title="Ask Life Garden">🎙</button>');
