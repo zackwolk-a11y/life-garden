@@ -286,6 +286,22 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 @keyframes vpulse{50%{box-shadow:0 0 0 16px color-mix(in srgb,var(--accent) 10%,transparent)}}
 .vlevel{width:9rem;height:.35rem;border-radius:9px;background:var(--bg2);overflow:hidden}.vlevel i{display:block;height:100%;width:0;background:var(--good);transition:width .08s}
 @media print{#voiceFab{display:none}}
+.agday{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:.5rem .7rem .4rem;margin-bottom:.7rem}
+.agday.is-today{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+.agday-h{display:flex;justify-content:space-between;align-items:baseline;width:100%;background:none;border:0;padding:.2rem 0 .4rem;font-size:1.05rem;color:var(--ink);cursor:pointer;text-align:left}
+.ag{display:flex;gap:.6rem;align-items:stretch;width:100%;background:none;border:0;border-top:1px solid var(--line);padding:.5rem 0;text-align:left;color:var(--ink);font-size:1rem;cursor:pointer}
+.ag-t{font-family:var(--sans);font-size:.82rem;font-weight:600;min-width:3.4rem;line-height:1.25;color:var(--ink2)}
+.ag-bar{width:4px;border-radius:3px;flex:none}
+.ag-w{flex:1;line-height:1.3}
+.ag .stb{display:inline-block;min-width:1.2em;text-align:center;border-radius:4px;background:var(--bg2);font-family:var(--sans);font-size:.72rem;padding:0 .2rem;color:var(--ink3)}
+.ag.prop .ag-w{color:var(--ink2);font-style:italic}.ag.prop .ag-bar{opacity:.45}
+.ag.done .ag-w{text-decoration:line-through;color:var(--ink3)}
+.month.m-small{gap:3px}
+.month.m-small .mc{min-height:3.4rem;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:.2rem;padding:.3rem 0;font-size:.95rem;color:var(--ink);font-family:var(--sans)}
+.month.m-small .mc .n{font-weight:600}
+.month.m-small .dots{display:flex;gap:2px}.month.m-small .dots i{width:6px;height:6px;border-radius:50%}
+.month.m-small .cnt{font-size:.62rem;color:var(--ink3)}
+.month.m-small .mh{font-size:.8rem}
 .blk.lifted{transform:scale(1.02);box-shadow:0 12px 30px rgba(0,0,0,.45);z-index:30}
 .blk .grip{height:14px}
 </style>
@@ -313,7 +329,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.17-g';
+const APP_VERSION = '2026.11.17-h';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -1313,6 +1329,33 @@ const people = () => S.settings.people.filter(Boolean);
 const whoOpts = () => [...people(), 'Both', 'Not specified'];
 
 /* ================= Week & month ================= */
+const narrow = () => matchMedia('(max-width: 860px)').matches;
+let wasNarrow = narrow(); window.addEventListener('resize', () => { if (narrow() !== wasNarrow) { wasNarrow = narrow(); if (R.view === 'week' && !dlg().open) render(); } });
+function agendaItems(x) {
+  const bl = dayBlocks(x).filter(b => !b.sleep && catOf(b) !== 'sleep'), cf = conflictsOn(x).ids;
+  return bl.map(b => `<button class="ag ${b.status === 'proposed' ? 'prop' : ''} ${b.done ? 'done' : ''}" data-act="openBlock" data-id="${b.id}">
+      <span class="ag-t">${fmtTimeShort(b.start)}<br><span class="muted">${fmtTimeShort(b.end)}</span></span>
+      <span class="ag-bar" style="background:${catColor(catOf(b))}"></span>
+      <span class="ag-w">${b.status && STATUS[b.status] ? `<span class="stb">${STATUS[b.status][1]}</span> ` : ''}${esc(b.title)}${b.kind !== 'flexible' ? ' <span title="locked">🔒</span>' : ''}${cf.has(b.id) ? ' <span class="chip bad">overlap</span>' : ''}</span>
+    </button>`).join('') || '<div class="muted small" style="padding:.4rem 0">Nothing planned.</div>';
+}
+function weekAgenda(d, days) {
+  const showProp = !draftHidden();
+  return `<div class="row between" style="margin-bottom:.6rem"><span class="small muted sans">${days.reduce((n, x) => n + dayBlocks(x).filter(b => !b.sleep).length, 0)} blocks this week</span>
+      <button class="btn sm" data-act="toggleDraft">${showProp ? 'Hide' : 'Show'} draft suggestions</button></div>
+    ${days.map(x => `<section class="agday ${x === todayISO() ? 'is-today' : ''}">
+      <button class="agday-h" data-act="openDay" data-d="${x}"><span><b>${['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][dow(x)]}</b> ${fmtDate(x, { month: 'short', day: 'numeric' })}${x === todayISO() ? ' · Today' : ''}</span><span class="muted small">Open ›</span></button>
+      ${(S.daynotes[x] || {}).phase ? `<div class="tiny muted sans" style="margin:-.1rem 0 .3rem">${esc(S.daynotes[x].phase)}</div>` : ''}
+      ${agendaItems(x)}</section>`).join('')}`;
+}
+function monthMobile(d, cells) {
+  const sel = R.date;
+  return `<div class="month m-small">${['M', 'T', 'W', 'T', 'F', 'S', 'S'].map(x => `<div class="mh">${x}</div>`).join('')}${cells.map(x => {
+      const bl = dayBlocks(x).filter(b => !b.sleep), major = bl.filter(b => b.kind !== 'flexible' || b.status === 'confirmed' || !b.status);
+      return `<button class="mc ${monthKey(x) !== monthKey(d) ? 'out' : ''} ${x === sel ? 'sel' : ''} ${x === todayISO() ? 'today' : ''}" data-act="pickMonthDay" data-d="${x}"><span class="n">${+x.slice(8)}</span>
+        <span class="dots">${major.slice(0, 4).map(b => `<i style="background:${catColor(catOf(b))}"></i>`).join('')}</span>${bl.length ? `<span class="cnt">${bl.length}</span>` : ''}</button>`; }).join('')}</div>
+    <section class="agday" style="margin-top:.8rem"><button class="agday-h" data-act="openDay" data-d="${sel}"><span><b>${fmtDate(sel, { weekday: 'long', month: 'long', day: 'numeric' })}</b></span><span class="muted small">Open day ›</span></button>${agendaItems(sel)}</section>`;
+}
 VIEWS.week = () => {
   const d = R.date, ws = weekStart(d), days = [...Array(7)].map((_, i) => addDays(ws, i)), px = .7;
   const all = days.flatMap(x => dayBlocks(x)); const [r0, r1] = range(all);
@@ -1326,6 +1369,10 @@ VIEWS.week = () => {
   // month
   const m0 = d.slice(0, 8) + '01', gs = weekStart(m0), cells = [...Array(42)].map((_, i) => addDays(gs, i));
   const month = `<div class="month">${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(x => `<div class="mh">${x}</div>`).join('')}${cells.map(x => { const bl = dayBlocks(x), maj = bl.filter(b => b.kind !== 'flexible'); return `<div class="mc ${monthKey(x) !== monthKey(d) ? 'out' : ''} ${x === d ? 'sel' : ''} ${x === todayISO() ? 'today' : ''}" data-act="openDay" data-d="${x}"><span class="n">${+x.slice(8)}</span>${maj.slice(0, 2).map(b => `<div class="ev"><span class="dot" style="background:${catColor(catOf(b))}"></span>${esc(b.title)}</div>`).join('')}${bl.length > maj.slice(0, 2).length ? `<div class="muted">+${bl.length - maj.slice(0, 2).length} more</div>` : ''}</div>`; }).join('')}</div>`;
+  if (narrow()) return `<div class="sec-head"><div><h2>${R.tab.wkview === 'month' ? 'Month' : 'Week of ' + fmtDate(ws, { month: 'short', day: 'numeric' })}</h2></div>
+      <div class="row">${R.tab.wkview === 'month' ? `<button class="btn sm" data-act="pickMonthDay" data-d="${todayISO()}">Today</button>` : `<button class="btn sm" data-act="weekNav" data-n="-7" aria-label="Previous week">‹</button><button class="btn sm" data-act="pickDay" data-d="${todayISO()}">Today</button><button class="btn sm" data-act="weekNav" data-n="7" aria-label="Next week">›</button>`}</div></div>
+    <div class="tabs" role="group"><button aria-pressed="${(R.tab.wkview || 'week') === 'week'}" data-act="tab" data-g="wkview" data-v="week">Week</button><button aria-pressed="${R.tab.wkview === 'month'}" data-act="tab" data-g="wkview" data-v="month">Month</button></div>
+    ${R.tab.wkview === 'month' ? `<div class="row between" style="margin-bottom:.5rem"><button class="btn sm" data-act="monNav" data-n="-1">‹</button><b>${fmtDate(m0, { month: 'long', year: 'numeric' })}</b><button class="btn sm" data-act="monNav" data-n="1">›</button></div>${monthMobile(d, cells)}` : weekAgenda(d, days)}`;
   return `<div class="sec-head"><div><h2>Week of ${fmtDate(ws, { month: 'long', day: 'numeric' })}</h2><p class="sans small">Same plan as Today — tap a block to edit it, drag it (press and hold on a phone) to move it to another time or day.</p></div>
     <div class="row"><button class="btn" data-act="weekNav" data-n="-7">‹ Previous</button><button class="btn" data-act="pickDay" data-d="${todayISO()}">This week</button><button class="btn" data-act="weekNav" data-n="7">Next ›</button></div></div>
     ${grid}
@@ -1333,10 +1380,11 @@ VIEWS.week = () => {
     ${month}<p class="tiny muted sans">Month cells show fixed and protected commitments first. A quiet cell isn't proof of a free day.</p>
     <div class="row" style="margin-top:1rem;gap:1rem">${Object.entries(CATS).map(([k, c]) => `<span class="small sans row" style="gap:.3rem"><span class="dot" style="background:${catColor(k)}"></span>${c.label}</span>`).join('')}</div>`;
 };
-VIEWS.week_after = () => wireWeekDrag();
+VIEWS.week_after = () => { if (!narrow()) wireWeekDrag(); };
 Object.assign(ACT, {
   openDay: el => go('today', el.dataset.d),
   monNav: el => { const [y, m] = R.date.split('-').map(Number); const dt = new Date(Date.UTC(y, m - 1 + +el.dataset.n, 1)); go('week', iso(dt)); },
+  pickMonthDay: el => { R.date = el.dataset.d; render(); },
 });
 
 /* ================= Capacity ================= */
