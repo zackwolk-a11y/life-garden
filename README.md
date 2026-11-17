@@ -20,3 +20,9 @@ Tap 🎙 on any screen and say what you want ("Move yoga to 4 tomorrow", "Dentis
 
 ## Editing with Gemini
 Open the Sheet and use Gemini in the side panel, e.g. *"Add a fixed block on 2026-11-24 from 10:00 to 11:00 called Dentist"*. The **How to edit (for Gemini)** tab explains the columns. Changes appear in the app within about a minute, or when it's reopened.
+
+## Source, tests and audit report
+
+- `source/src/` — the app's source files; `source/build.sh` rebuilds `index.html` from them.
+- `source/tests/test_app.py` — end-to-end tests against the real app and the real `Code.gs` (synthetic data only). Run `python3 source/tests/test_app.py` (needs node, python3 and Playwright).
+- `source/docs/AUDIT_REPORT.md` — UX/UI audit, before/after, testing report and limitations, data-integrity report, remaining issues.

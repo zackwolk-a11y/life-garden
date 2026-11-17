@@ -206,7 +206,8 @@ details.disc>.in{padding:0 1rem 1rem}
 .wk .gut span{position:absolute;right:6px;font-family:var(--sans);font-size:.68rem;color:var(--ink3);transform:translateY(-50%)}
 .wk .hl{position:absolute;left:0;right:0;border-top:1px solid var(--line);opacity:.6}
 .wk .blk{left:3px;right:3px;font-size:.7rem;padding:.15rem .3rem}
-.month{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.month{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.month .mc{min-width:0;overflow:hidden}
 .month .mh{font-family:var(--sans);font-size:.72rem;color:var(--ink3);text-align:center;padding:.2rem}
 .month .mc{min-height:76px;background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.25rem .35rem;cursor:pointer;font-family:var(--sans);font-size:.72rem}
 .month .mc.out{opacity:.4}
@@ -307,6 +308,62 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 .month.m-small .mh{font-size:.8rem}
 .blk.lifted{transform:scale(1.02);box-shadow:0 12px 30px rgba(0,0,0,.45);z-index:30}
 .blk .grip{height:14px}
+
+/* ===== 2026-11 UX pass ===== */
+main{min-width:0}
+.nowcard{padding:.7rem .9rem;margin-bottom:.8rem;display:grid;gap:.35rem}
+.nc-row{display:grid;grid-template-columns:3.4rem 1fr;gap:.5rem;align-items:baseline}
+.nc-k{font-family:var(--sans);font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3)}
+.nc-v{display:flex;flex-wrap:wrap;gap:.25rem .6rem;align-items:baseline;min-width:0}
+.nc-b{background:none;border:0;padding:.15rem 0;color:var(--ink);font:inherit;font-size:1.02rem;text-align:left;cursor:pointer;display:inline-flex;gap:.4rem;align-items:baseline;min-height:2rem}
+.nc-b .dot{flex:none}
+.nc-b .stb{font-family:var(--sans);font-size:.72rem;background:var(--bg2);border-radius:4px;padding:0 .2rem;color:var(--ink3)}
+.nc-dec{display:inline-flex;gap:.3rem;flex-wrap:wrap;margin-left:.3rem}
+button.chip{cursor:pointer;font:inherit;font-family:var(--sans)}
+.legend{display:flex;flex-wrap:wrap;gap:.35rem .9rem;margin:.2rem .2rem .4rem;color:var(--ink3)}
+.legend span{display:inline-flex;align-items:center;gap:.35rem}
+.lg{display:inline-grid;place-items:center;width:1.3rem;height:.9rem;border-radius:3px;font-style:normal;font-size:.6rem}
+.lg-flex{background:color-mix(in srgb,var(--accent) 70%,var(--card))}
+.lg-lock{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--accent) 70%,var(--card)) 0 3px,color-mix(in srgb,var(--accent) 45%,var(--card)) 3px 6px)}
+.lg-prop{border:1.5px dashed var(--accent);background:color-mix(in srgb,var(--accent) 30%,var(--card))}
+.lg-done{background:color-mix(in srgb,var(--accent) 70%,var(--card));opacity:.45}
+.lg-now{height:0;border-top:2px solid var(--bad);border-radius:0}
+.actgrid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem}
+.actgrid .btn{justify-content:center;min-height:2.9rem;white-space:normal;text-align:center}
+.snaprow{display:flex;justify-content:space-between;gap:.6rem;align-items:center;flex-wrap:wrap;padding:.45rem 0;border-bottom:1px solid var(--line)}
+@media (max-width:860px){
+  .wide-only{display:none!important}
+  .hero{height:calc(118px + var(--sat))} .hero .sub{display:none}
+  .connectbar{font-size:.85rem;padding:.5rem .7rem}
+  .sec-head{gap:.5rem}
+  /* tables become stacked cards */
+  table.t.cards thead{display:none}
+  table.t.cards,table.t.cards tbody{display:block}
+  table.t.cards tr{display:grid;grid-template-columns:1fr 1fr;gap:.35rem .6rem;padding:.7rem .2rem;border-bottom:1px solid var(--line);position:relative}
+  table.t.cards td{display:flex;flex-direction:column;gap:.15rem;border:0;padding:0;min-width:0}
+  table.t.cards td[data-label]::before{content:attr(data-label);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3)}
+  table.t.cards td.wide{grid-column:1/-1}
+  table.t.cards td.num{text-align:left}
+  table.t.cards td:last-child{position:absolute;top:.35rem;right:0}
+  table.t.cards td:last-child .iconbtn{min-width:44px;min-height:44px}
+  table.t.cards td input[type=checkbox]{align-self:flex-start;width:1.4rem;height:1.4rem}
+  table.t.cards tr:has(td[colspan]){display:block}
+  .actgrid .btn{min-height:3rem}
+  .grid3:has(> .stat:nth-child(3):last-child){grid-template-columns:repeat(3,minmax(0,1fr));gap:.45rem}
+  .grid3 > .stat{padding:.55rem .6rem}
+  .grid3 > .stat .v{font-size:1.15rem}
+  .grid3 > .stat .k{font-size:.6rem;letter-spacing:.03em}
+  .grid3 > .stat .s{font-size:.7rem}
+}
+@media (pointer:coarse){
+  .btn,.tabs button{min-height:44px}
+  .btn.sm{min-height:40px}
+  .iconbtn{min-width:40px;min-height:40px}
+  .pri .chk{width:1.6rem;height:1.6rem}
+  .daystrip .d{min-height:52px}
+}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+:focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
 </style>
 </head>
 <body>
@@ -332,7 +389,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.17-i';
+const APP_VERSION = '2026.11.17-j';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -564,7 +621,9 @@ function receive(data, revAtSend, sent) {
   sync.hash = data.hash; if (data.sheetUrl) sync.cfg.sheetUrl = data.sheetUrl;
   if (data.same) { if (sent) sync.base = sent; saveSyncState(); return; }   // after an upload nobody else touched: the Sheet now matches what was sent
   if (sync.localRev === revAtSend) {
-    const before = JSON.stringify(S); adoptServer(data); sync.base = snapshotRows();
+    const before = JSON.stringify(S), c0 = snapCounts(S); adoptServer(data); sync.base = snapshotRows();
+    const c1 = snapCounts(S), lost = ['blocks', 'tasks', 'money', 'notes'].filter(k => c0[k] - c1[k] >= Math.max(5, c0[k] * 0.1));
+    if (lost.length) { takeSnapshot(`Before a large change from the Sheet (${lost.map(k => `${k} ${c0[k]}→${c1[k]}`).join(', ')})`, before); toast('The Sheet removed a lot at once — a restore point of the earlier plan is in Settings'); }
     if (JSON.stringify(S) !== before) { saveLocal(); softRender(); }
   } else {
     const keep = clone(S); adoptServer(data); sync.base = snapshotRows(); for (const k of SECTIONS) S[k] = keep[k];
@@ -604,7 +663,7 @@ async function connectSheet(url, key) {
   if (isServerEmpty(data)) { sync.base = null; sync.hash = null; saveSyncState(); await syncNow(); return 'pushed'; }
   const choice = await new Promise(res => openModal(`<div class="mh"><h3>This Sheet already has a plan</h3></div><div class="mb"><p class="small">Most of the time you want the Sheet's plan on this device. Merging adds everything from this device to the Sheet too, which can create duplicates if both started from the same backup.</p></div>
     <div class="mf"><button class="btn" id="cMerge">Merge this device into the Sheet</button><button class="btn primary" id="cUse">Use the Sheet's plan</button></div>`, m => { $('#cUse', m).onclick = () => { closeModal(); res('use'); }; $('#cMerge', m).onclick = () => { closeModal(); res('merge'); }; }));
-  if (choice === 'use') { const theme = S.settings.theme; adoptServer(data); S.settings.theme = theme; sync.base = snapshotRows(); sync.hash = data.hash; saveLocal(); saveSyncState(); render(); setStatus('saved', 'Synced with Google Sheet'); return 'used'; }
+  if (choice === 'use') { if (!isEmptyPlan(S)) await takeSnapshot('Before using the Sheet’s plan on this device'); const theme = S.settings.theme; adoptServer(data); S.settings.theme = theme; sync.base = snapshotRows(); sync.hash = data.hash; saveLocal(); saveSyncState(); render(); setStatus('saved', 'Synced with Google Sheet'); return 'used'; }
   const keep = clone(S); adoptServer(data); sync.base = snapshotRows(); for (const k of SECTIONS) S[k] = keep[k]; sync.hash = data.hash; saveSyncState(); await syncNow(); return 'merged';
 }
 function disconnectSheet() { sync.cfg = null; sync.base = null; sync.hash = null; saveSyncState(); setStatus('local', 'Saved on this device'); }
@@ -753,6 +812,50 @@ function render() {
   const keepScroll = $('.tl-scroll') ? $('.tl-scroll').scrollTop : null;
   try { main.innerHTML = VIEWS[R.view](); } catch (err) { console.error(err); main.innerHTML = `<div class="card"><h3>Something went wrong drawing this section.</h3><pre class="small">${esc(err.stack || err)}</pre></div>`; }
   (VIEWS[R.view + '_after'] || (() => { }))(keepScroll);
+}
+
+/* ---------- restore points: automatic local copies of the whole plan ----------
+   Kept in IndexedDB on this device (room for many full copies), newest first.
+   Taken before an app update, once a day, and before anything that replaces lots of data. */
+const SNAP_KEEP = 14;
+const snapCounts = o => ({ blocks: (o.blocks || []).length, tasks: (o.tasks || []).length, money: ((o.money || {}).entries || []).length, notes: Object.keys(o.daynotes || {}).length });
+let snapDB = null;
+function snapOpen() {
+  return snapDB || (snapDB = new Promise((res, rej) => {
+    if (!window.indexedDB) return rej(new Error('IndexedDB unavailable'));
+    const r = indexedDB.open('lifegarden', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('snaps', { keyPath: 't' });
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }));
+}
+async function snapTx(mode, fn) {
+  const db = await snapOpen();
+  return new Promise((res, rej) => { const tx = db.transaction('snaps', mode), req = fn(tx.objectStore('snaps')); tx.oncomplete = () => res(req && req.result); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+}
+async function snapList() {
+  try { return ((await snapTx('readonly', st => st.getAll())) || []).sort((a, b) => b.t - a.t); }
+  catch (e) { try { const o = JSON.parse(localStorage.getItem('lifegarden.snap') || 'null'); return o ? [o] : []; } catch (e2) { return []; } }
+}
+async function takeSnapshot(reason, dataStr) {
+  const data = dataStr || JSON.stringify(S), rec = { t: Date.now(), reason, version: APP_VERSION, day: todayISO(), counts: snapCounts(dataStr ? JSON.parse(dataStr) : S), data };
+  try {
+    await snapTx('readwrite', st => st.put(rec));
+    const all = await snapList();
+    if (all.length > SNAP_KEEP) await snapTx('readwrite', st => { let r; for (const o of all.slice(SNAP_KEEP)) r = st.delete(o.t); return r; });
+    return true;
+  } catch (e) {
+    try { localStorage.setItem('lifegarden.snap', JSON.stringify(rec)); return true; } catch (e2) { console.warn('restore point failed', e, e2); return false; }
+  }
+}
+async function snapGet(t) { const all = await snapList(); return all.find(o => o.t === +t); }
+const isEmptyPlan = o => !o.blocks.length && !o.tasks.length && !(o.money.entries || []).length;
+/* called once at start-up, after the saved plan is loaded */
+async function bootSnapshots() {
+  if (isEmptyPlan(S)) { localStorage.setItem('lifegarden.appver', APP_VERSION); return; }
+  const prev = localStorage.getItem('lifegarden.appver');
+  if (prev !== APP_VERSION) { if (await takeSnapshot(prev ? `Before app update (${prev} → ${APP_VERSION})` : 'First open of this version')) localStorage.setItem('lifegarden.appver', APP_VERSION); }
+  const all = await snapList();
+  if (!all.some(o => o.day === todayISO())) await takeSnapshot('Daily copy');
 }
 /* ================= Today: time blocking ================= */
 const STATUS = { confirmed: ['Confirmed by Jordan', '✓'], source: ['Source-listed', 'ⓢ'], sourceproposed: ['Source + proposed', 'ⓢ'], needs: ['Needs confirmation', '?'], proposed: ['Proposed (draft)', '~'] };
@@ -918,22 +1021,23 @@ VIEWS.today = () => {
   return `
   <div class="sec-head"><div><h2>${fmtDate(d)}${d === t0 ? ' · Today' : ''}</h2>
     <p class="sans small">${bl.length ? `${bl.length} block${bl.length > 1 ? 's' : ''} · ${fmtDur(sched)} planned` : 'Nothing scheduled yet'}${cf.pairs.length ? ` · <span style="color:var(--bad)">${cf.pairs.length} overlap${cf.pairs.length > 1 ? 's' : ''}</span>` : ''}${isPast ? ' · past day' : ''}</p></div>
-    <div class="row"><button class="btn" data-act="briefing">☀ Briefing</button><button class="btn" data-act="addBlock">＋ Block</button><button class="btn" data-act="addTask">＋ Next step</button></div></div>
+    <div class="row">${d !== t0 ? `<button class="btn" data-act="pickDay" data-d="${t0}">↩ Today</button>` : ''}<button class="btn" data-act="briefing">☀ Briefing</button><button class="btn primary" data-act="addMenu">＋ Add</button></div></div>
   ${!sync.cfg && !S.settings.hideConnectHint ? `<div class="connectbar"><span>📱 Saved on this device only. Connect the Google Sheet to share this plan with every phone and with Gemini.</span><span class="row"><button class="btn sm primary" data-act="nav" data-v="backup">Connect</button><button class="btn sm ghost" data-act="hideHint">Not now</button></span></div>` : ''}
-  <form class="cmdbar" id="cmdForm" autocomplete="off"><input id="cmd" aria-label="Quick add" placeholder="Quick add — “Yoga 9–10am tomorrow”, “Call landlord”, “move Homework to 2pm”   ( / )"><button class="btn primary">Add</button></form>
+  <form class="cmdbar wide-only" id="cmdForm" autocomplete="off"><input id="cmd" aria-label="Quick add" placeholder="Quick add — “Yoga 9–10am tomorrow”, “Call landlord”, “move Homework to 2pm”   ( / )"><button class="btn primary">Add</button></form>
   <div class="daystrip" role="group" aria-label="Choose day">
     <button class="btn ghost sm" data-act="weekNav" data-n="-7" aria-label="Previous week">‹</button>
     ${days.map(x => { const load = sum(dayBlocks(x).map(b => b.end - b.start)); return `<button class="d ${x === t0 ? 'today' : ''}" aria-pressed="${x === d}" data-act="pickDay" data-d="${x}">${DOW[dow(x)]}<b>${+x.slice(8)}</b><span class="load"><i style="width:${Math.min(100, load / 6)}%"></i></span></button>`; }).join('')}
     <button class="btn ghost sm" data-act="weekNav" data-n="7" aria-label="Next week">›</button>
   </div>
-  ${d !== t0 ? `<div style="margin:-.4rem 0 1rem"><button class="btn sm ghost" data-act="pickDay" data-d="${t0}">↩ Back to today</button></div>` : ''}
   <div class="today-grid">
     <section aria-labelledby="tbH">
+      ${nowCard(d)}
       <div class="row between" style="margin-bottom:.5rem"><h3 id="tbH">Time blocking</h3>
         <div class="row"><button class="btn sm" data-act="lateStart" ${bl.some(isMovable) ? '' : 'disabled'} title="Preview a gentler version of this day">☕ Late start…</button></div></div>
       <div class="tl-wrap"><div class="tl-scroll" id="tlScroll">${bl.length || true ? timelineHTML(d) : ''}</div></div>
-      <p class="tiny muted sans" style="margin:.4rem .2rem">${matchMedia('(pointer:coarse)').matches ? 'Press and hold a block, then drag to move it (you’ll review any knock-on changes first). Drag its bottom handle to resize. Tap to edit.' : 'Drag a block to move it (you’ll review any knock-on changes first). Drag its bottom edge to resize.'} Double-click empty space to add a block there.</p>
-      ${cf.pairs.length ? `<div class="card" style="border-color:color-mix(in srgb,var(--bad) 45%,var(--line));margin-top:.6rem"><h3>Overlaps to decide</h3><ul class="small sans" style="margin:.2rem 0;padding-left:1.1rem">${cf.pairs.map(([a, b]) => `<li><a href="#" data-act="openBlock" data-id="${a.id}">${esc(a.title)}</a> (${fmtTimeShort(a.start)}–${fmtTimeShort(a.end)}) and <a href="#" data-act="openBlock" data-id="${b.id}">${esc(b.title)}</a> (${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)})</li>`).join('')}</ul><p class="tiny muted sans" style="margin:.3rem 0 0">The planner never decides which one matters more.</p></div>` : ''}
+      <p class="tiny muted sans" style="margin:.4rem .2rem">${matchMedia('(pointer:coarse)').matches ? 'Tap a block for quick actions. Press and hold, then drag to move it (you’ll review any knock-on changes first). Drag the bottom handle to resize.' : 'Click a block for quick actions. Drag it to move (you’ll review any knock-on changes first); drag its bottom edge to resize.'} Double-click empty space to add a block there.</p>
+      ${LEGEND}
+      ${cf.pairs.length ? `<div class="card" id="overlapCard" style="border-color:color-mix(in srgb,var(--bad) 45%,var(--line));margin-top:.6rem"><h3>Overlaps to decide</h3><ul class="small sans" style="margin:.2rem 0;padding-left:1.1rem">${cf.pairs.map(([a, b]) => `<li><a href="#" data-act="openBlock" data-id="${a.id}">${esc(a.title)}</a> (${fmtTimeShort(a.start)}–${fmtTimeShort(a.end)}) and <a href="#" data-act="openBlock" data-id="${b.id}">${esc(b.title)}</a> (${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)})</li>`).join('')}</ul><p class="tiny muted sans" style="margin:.3rem 0 0">The planner never decides which one matters more.</p></div>` : ''}
       ${fixed.length ? `<details class="disc" style="margin-top:.75rem"><summary>Fixed appointments (${fixed.length})</summary><div class="in small sans">${fixed.map(b => `<div class="row between" style="padding:.25rem 0;border-bottom:1px solid var(--line)"><span><span class="dot" style="background:${catColor(catOf(b))}"></span> ${esc(b.title)}</span><span class="muted">${fmtTime(b.start)} – ${fmtTime(b.end)} <button class="btn sm ghost" data-act="seeBlock" data-id="${b.id}">See in timeline</button></span></div>`).join('')}</div></details>` : ''}
     </section>
     <aside class="stack">
@@ -976,7 +1080,7 @@ function wireTimeline(sc) {
   $$('.blk[data-blk]', tl).forEach(el => {
     const b = S.blocks.find(x => x.id === el.dataset.blk);
     el.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBlockEditor(b.id); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBlockActions(b.id); }
       if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && isMovable(b)) { e.preventDefault(); reviewMove(b.id, b.start + (e.key === 'ArrowUp' ? -15 : 15)); }
     });
     const startDrag = (grip, y0) => {
@@ -992,7 +1096,7 @@ function wireTimeline(sc) {
         },
         end(tapOpens = true) {
           tag && tag.remove(); el.classList.remove('dragging', 'lifted');
-          if (!moved) { if (tapOpens) openBlockEditor(b.id); return; }
+          if (!moved) { if (tapOpens) openBlockActions(b.id); return; }
           if (grip) {
             if (val === b.end) return render();
             const hit = immovables(b.date, S.blocks, b.id).find(o => overlaps(o, { s: b.start, e: val }));
@@ -1019,7 +1123,7 @@ function wireTimeline(sc) {
       const mv = ev => { const t = ev.touches[0]; if (d) { ev.preventDefault(); d.move(t.clientY); } else if (Math.hypot(t.clientX - x0, t.clientY - y0) > 8) { cancelled = true; clearTimeout(timer); R.interacting = false; } };
       const end = ev => { clearTimeout(timer); R.interacting = false; el.removeEventListener('touchmove', mv); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); setTimeout(flushPendingRender, 0);
         if (d) { ev.preventDefault(); d.end(false); if (!el.classList.contains('dragging')) el.classList.remove('lifted'); }
-        else if (!cancelled && ev.type === 'touchend') { ev.preventDefault(); openBlockEditor(b.id); } };
+        else if (!cancelled && ev.type === 'touchend') { ev.preventDefault(); openBlockActions(b.id); } };
       el.addEventListener('touchmove', mv, { passive: false }); el.addEventListener('touchend', end); el.addEventListener('touchcancel', end);
     }, { passive: true });
   });
@@ -1069,7 +1173,7 @@ function wireWeekDrag() {
       if (e.pointerType === 'touch' || e.button !== 0 || b.done) return;
       const x0 = e.clientX, y0 = e.clientY; let d = null; el.setPointerCapture(e.pointerId);
       const mv = ev => { if (!d && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return; d = d || start(x0, y0); d.move(ev.clientX, ev.clientY); };
-      const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); if (!(d && d.end())) openBlockEditor(b.id); };
+      const up = () => { el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); if (!(d && d.end())) openBlockActions(b.id); };
       el.addEventListener('pointermove', mv); el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
     });
     el.addEventListener('touchstart', e => {
@@ -1078,7 +1182,7 @@ function wireWeekDrag() {
       const timer = b.done ? null : setTimeout(() => { d = start(x0, y0); el.classList.add('lifted'); if (navigator.vibrate) navigator.vibrate(12); }, 380);
       const mv = ev => { const p = ev.touches[0]; if (d) { ev.preventDefault(); d.move(p.clientX, p.clientY); } else if (Math.hypot(p.clientX - x0, p.clientY - y0) > 8) { cancelled = true; clearTimeout(timer); } };
       const end = ev => { clearTimeout(timer); el.removeEventListener('touchmove', mv); el.removeEventListener('touchend', end); el.removeEventListener('touchcancel', end); el.classList.remove('lifted');
-        if (d) { ev.preventDefault(); d.end(); } else if (!cancelled && ev.type === 'touchend') { ev.preventDefault(); openBlockEditor(b.id); } };
+        if (d) { ev.preventDefault(); d.end(); } else if (!cancelled && ev.type === 'touchend') { ev.preventDefault(); openBlockActions(b.id); } };
       el.addEventListener('touchmove', mv, { passive: false }); el.addEventListener('touchend', end); el.addEventListener('touchcancel', end);
     }, { passive: true });
   });
@@ -1091,7 +1195,7 @@ function openBlockEditor(id, preset = {}) {
   const catOpts = `<option value="auto">Automatic (${CATS[autoCat(b.title)].label})</option>` + Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${b.cat === k ? 'selected' : ''}>${c.label}</option>`).join('');
   openModal(`<div class="mh"><h3>${ex ? 'Edit block' : 'New block'}</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
   <form class="mb stack" id="bf">
-    <label class="f">Activity<input name="title" value="${esc(b.title)}" required autofocus></label>
+    <label class="f">Activity<input name="title" value="${esc(b.title)}" required ${ex ? '' : 'autofocus'}></label>
     <div class="fgrid"><label class="f">Date<input type="date" name="date" value="${b.date}"></label>
       <label class="f">Start<input type="time" name="start" step="300" value="${hhmm(b.start)}"></label>
       <label class="f">End <span class="tiny">(00:00 = midnight)</span><input type="time" name="end" step="300" value="${b.end === 1440 ? '00:00' : hhmm(b.end)}"></label></div>
@@ -1129,7 +1233,7 @@ function openBlockEditor(id, preset = {}) {
       if (n.date !== R.date) toast(`Added to ${fmtShort(n.date)}`, 'Go there', () => go('today', n.date));
     };
     if (ex) {
-      $('#bfDel', m).onclick = () => { closeModal(); commit('blocks', 'remove ' + b.title, bl => bl.splice(bl.findIndex(x => x.id === b.id), 1), { toast: `Removed “${b.title}”` }); };
+      $('#bfDel', m).onclick = async () => { closeModal(); if (b.kind !== 'flexible' && !(await confirmBox(`Delete the locked block “${b.title}”? You can undo right after.`, 'Delete'))) return; commit('blocks', 'remove ' + b.title, bl => bl.splice(bl.findIndex(x => x.id === b.id), 1), { toast: `Removed “${b.title}”` }); };
       $('#bfDup', m).onclick = () => { closeModal(); openBlockEditor(null, { ...b, title: b.title, date: b.date, start: b.end, end: b.end + (b.end - b.start) }); };
       const sp = $('#bfSplit', m); if (sp) sp.onclick = () => {
         const at = fromHHMM(f.splitAt.value), sd = f.splitDate.value, ssRaw = fromHHMM(f.splitStart.value);
@@ -1223,7 +1327,7 @@ function quickAdd(text) {
     const tm = parseTimes('at ' + m[2]);
     if (hits.length !== 1) return toast(hits.length ? `${hits.length} flexible blocks match “${m[1]}” — be more specific` : `No flexible block matches “${m[1]}” on this day`);
     if (!tm) return toast(`Couldn't read the time “${m[2]}”`);
-    $('#cmd').value = ''; return reviewMove(hits[0].id, tm.start);
+    if ($('#cmd')) $('#cmd').value = ''; return reviewMove(hits[0].id, tm.start);
   }
   let [date, rest] = parseDateWord(text, R.date); date = date || R.date;
   const tm = parseTimes(rest);
@@ -1237,7 +1341,7 @@ function quickAdd(text) {
     const t = { id: uid(), title: title[0].toUpperCase() + title.slice(1), area: 'Today', status: 'Confirmed', date, notes: '', mins: '', order: -Date.now() / 1e13 };
     commit('tasks', 'add ' + t.title, ts => ts.push(t), { toast: `Next step added${date !== R.date ? ' for ' + fmtShort(date) : ''}` });
   }
-  const c = $('#cmd'); if (c) { c.value = ''; c.focus(); }
+  const c = $('#cmd'); if (c) { c.value = ''; if (!narrow()) c.focus(); }
 }
 
 /* ---------- late start ---------- */
@@ -1289,7 +1393,7 @@ Object.assign(ACT, {
   weekNav: el => go(R.view, addDays(R.date, +el.dataset.n)),
   addBlock: () => openBlockEditor(null, { date: R.date, start: firstFreeSlot(R.date, 60), end: firstFreeSlot(R.date, 60) + 60 }),
   addTask: () => openTaskEditor(null),
-  openBlock: el => openBlockEditor(el.dataset.id),
+  openBlock: el => openBlockActions(el.dataset.id),
   seeBlock: el => { const b = $(`.blk[data-blk="${el.dataset.id}"]`); if (b) { b.scrollIntoView({ block: 'center', behavior: 'smooth' }); b.focus({ preventScroll: true }); } },
   lateStart: () => openLateStart(),
   editRoutines: () => openRoutines(),
@@ -1305,6 +1409,103 @@ Object.assign(ACT, {
   taskSchedule: el => { const t = S.tasks.find(x => x.id === el.dataset.id); const dur = +t.mins || 30; const s = firstFreeSlot(R.date, dur); openBlockEditor(null, { title: t.title, date: R.date, start: s, end: Math.min(1440, s + dur), taskId: t.id }); },
   routineDone: el => commit('routines', 'routine check', rs => { const r = rs.find(x => x.id === el.dataset.id); r.done = r.done || {}; if (r.done[R.date]) delete r.done[R.date]; else r.done[R.date] = true; }),
 });
+
+/* ================= Today: at-a-glance, free time, quick actions ================= */
+function dayWindow(d) {
+  const st = S.settings, sf = fromHHMM(st.sleepFrom), stt = fromHHMM(st.sleepTo);
+  let w0 = Math.max((+st.dayStart || 6) * 60, stt != null && sf != null && sf > stt ? stt : 0), w1 = Math.min((+st.dayEnd || 24) * 60, sf != null && sf > w0 ? sf : 1440);
+  if (d === todayISO()) w0 = Math.max(w0, Math.ceil(nowMin() / 15) * 15);
+  return [w0, w1];
+}
+/* gaps of 15+ minutes inside the waking window that no block covers */
+function freeGaps(d, list = S.blocks) {
+  const [w0, w1] = dayWindow(d); if (w1 <= w0) return [];
+  const busy = dayBlocks(d, list).filter(b => !b.sleep).map(b => [b.start, b.end]).sort((a, b) => a[0] - b[0]);
+  const out = []; let t = w0;
+  for (const [s, e] of busy) { if (e <= t) continue; if (s > t) out.push([t, Math.min(s, w1)]); t = Math.max(t, e); if (t >= w1) break; }
+  if (t < w1) out.push([t, w1]);
+  return out.filter(([s, e]) => e - s >= 15);
+}
+function nowCard(d) {
+  const t0 = todayISO(), bl = dayBlocks(d).filter(b => !b.sleep && catOf(b) !== 'sleep'), gaps = freeGaps(d), free = sum(gaps.map(([s, e]) => e - s));
+  const big = gaps.slice().sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]))[0];
+  const cf = conflictsOn(d).pairs.length, needs = bl.filter(b => b.status === 'needs').length, sugg = bl.filter(b => b.status === 'proposed').length;
+  const decide = [cf ? `<button class="chip bad" data-act="seeOverlaps">${cf} overlap${cf > 1 ? 's' : ''}</button>` : '', needs ? `<span class="chip warn">${needs} to confirm</span>` : '', sugg ? `<span class="chip">${sugg} suggestion${sugg > 1 ? 's' : ''}</span>` : ''].filter(Boolean).join(' ');
+  const freeTxt = free ? `${fmtDur(free)} ${d === t0 ? 'still open today' : 'open'}${big ? ` · longest ${fmtTimeShort(big[0])}–${fmtTimeShort(big[1])}` : ''}` : 'No open time left in the waking day';
+  const blkBtn = b => `<button class="nc-b" data-act="openBlock" data-id="${b.id}"><span class="dot" style="background:${catColor(catOf(b))}"></span><span>${b.status && STATUS[b.status] ? `<span class="stb">${STATUS[b.status][1]}</span> ` : ''}${esc(b.title)}${b.kind !== 'flexible' ? ' 🔒' : ''}</span></button>`;
+  let main = '';
+  if (d === t0) {
+    const n = nowMin(), cur = bl.filter(b => b.start <= n && n < b.end), next = bl.find(b => b.start > n);
+    main = `<div class="nc-row"><span class="nc-k">Now</span><div class="nc-v">${cur.length ? cur.map(b => `${blkBtn(b)}<span class="tiny muted sans">until ${fmtTimeShort(b.end)}</span>`).join('') : '<span class="muted">Open time</span>'}</div></div>
+      <div class="nc-row"><span class="nc-k">Next</span><div class="nc-v">${next ? `${blkBtn(next)}<span class="tiny muted sans">${fmtTimeShort(next.start)} · in ${fmtDur(next.start - n)}</span>` : '<span class="muted">Nothing else planned today</span>'}</div></div>`;
+  } else if (bl.length) {
+    main = `<div class="nc-row"><span class="nc-k">Starts</span><div class="nc-v">${blkBtn(bl[0])}<span class="tiny muted sans">${fmtTimeShort(bl[0].start)}</span></div></div>`;
+  }
+  const doneN = bl.filter(b => b.done).length;
+  return `<div class="card nowcard">${main}
+    <div class="nc-row"><span class="nc-k">Free</span><div class="nc-v small sans">${freeTxt}</div></div>
+    <div class="nc-row"><span class="nc-k">Done</span><div class="nc-v small sans">${bl.length ? `${doneN} of ${bl.length} blocks` : 'Nothing planned yet'}${decide ? `<span class="nc-dec">${decide}</span>` : ''}</div></div>
+  </div>`;
+}
+const LEGEND = `<div class="legend tiny sans" aria-label="What the block styles mean">
+  <span><i class="lg lg-flex"></i>Flexible — can shift</span><span><i class="lg lg-lock">🔒</i>Fixed or protected — never moved for you</span>
+  <span><i class="lg lg-prop"></i>Dashed = suggestion, not confirmed</span><span><i class="lg lg-done"></i>Faded = done</span><span><i class="lg lg-now"></i>Now</span></div>`;
+
+function openBlockActions(id) {
+  const b = S.blocks.find(x => x.id === id); if (!b) return;
+  const st = b.status && STATUS[b.status], locked = b.kind !== 'flexible', tomorrow = addDays(b.date, 1);
+  const kindTxt = { fixed: 'Fixed appointment — only moves if you move it', protected: 'Protected time — only moves if you move it', flexible: 'Flexible — can shift when the day changes' }[b.kind];
+  openModal(`<div class="mh"><h3>${esc(b.title)}</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+  <div class="mb stack">
+    <p class="small sans" style="margin:0">${fmtDate(b.date, { weekday: 'short', month: 'short', day: 'numeric' })} · ${fmtTime(b.start)}–${fmtTime(b.end)} · ${fmtDur(b.end - b.start)}</p>
+    <p class="tiny muted sans" style="margin:0">${locked ? '🔒 ' : ''}${kindTxt}${st ? ` · ${st[0]}` : ''}${b.src === 'draft' ? ' · from the recovered draft' : ''}</p>
+    ${b.notes ? `<p class="small" style="margin:0;white-space:pre-wrap">${esc(b.notes)}</p>` : ''}
+    ${b.status === 'proposed' || b.status === 'needs' ? `<div class="card flat" style="padding:.6rem .8rem"><p class="small" style="margin:0 0 .5rem">This is ${b.status === 'proposed' ? 'a suggestion' : 'waiting for confirmation'} — it isn't part of your confirmed plan yet.</p><div class="row"><button class="btn primary sm" id="baKeep">✓ Keep it</button><button class="btn sm ghost" id="baDismiss">Dismiss suggestion</button></div></div>` : ''}
+    <div class="actgrid">
+      <button class="btn" id="baDone">${b.done ? '↺ Not done' : '✓ Done'}</button>
+      <button class="btn" id="baEdit">✎ Edit details</button>
+      <button class="btn" id="baEarlier" ${b.done ? 'disabled' : ''}>↑ 15 min earlier</button>
+      <button class="btn" id="baLater" ${b.done ? 'disabled' : ''}>↓ 15 min later</button>
+      <button class="btn" id="baTomorrow" ${b.done ? 'disabled' : ''}>→ Move to tomorrow</button>
+      <button class="btn" id="baDup">⧉ Duplicate</button>
+    </div>
+    ${locked && !b.done ? '<p class="tiny muted sans" style="margin:0">Moving a locked block shows you a preview first, with a reminder to change the real booking too.</p>' : ''}
+  </div>
+  <div class="mf"><button class="btn danger" id="baDel">Delete</button><span class="grow"></span><button class="btn" data-act="close">Close</button></div>`, m => {
+    const done = () => { closeModal(); commit('blocks', (b.done ? 'undo done ' : 'done ') + b.title, bl => { const o = bl.find(x => x.id === id); o.done = !o.done; if (o.src === 'draft') o.edited = true; }, { toast: b.done ? `“${b.title}” marked not done` : `Done: ${b.title}` }); };
+    $('#baDone', m).onclick = done;
+    $('#baEdit', m).onclick = () => { closeModal(); setTimeout(() => openBlockEditor(id), 30); };
+    $('#baEarlier', m).onclick = () => { closeModal(); setTimeout(() => reviewMove(id, Math.max(0, b.start - 15)), 30); };
+    $('#baLater', m).onclick = () => { closeModal(); setTimeout(() => reviewMove(id, Math.min(1440 - (b.end - b.start), b.start + 15)), 30); };
+    $('#baTomorrow', m).onclick = () => { closeModal(); setTimeout(() => reviewMove(id, b.start, tomorrow), 30); };
+    $('#baDup', m).onclick = () => { closeModal(); setTimeout(() => openBlockEditor(null, { ...b, title: b.title, date: b.date, start: b.end, end: Math.min(1440, b.end + (b.end - b.start)) }), 30); };
+    const k = $('#baKeep', m); if (k) k.onclick = () => { closeModal(); commit('blocks', 'keep ' + b.title, bl => { const o = bl.find(x => x.id === id); o.status = 'confirmed'; o.edited = true; }, { toast: `Kept “${b.title}” in your plan` }); };
+    const dm = $('#baDismiss', m); if (dm) dm.onclick = () => { closeModal(); commit('blocks', 'dismiss ' + b.title, bl => bl.splice(bl.findIndex(x => x.id === id), 1), { toast: `Dismissed “${b.title}”` }); };
+    $('#baDel', m).onclick = async () => {
+      if (locked || b.status === 'confirmed') { closeModal(); if (!(await confirmBox(`Delete “${b.title}” (${fmtTimeShort(b.start)}–${fmtTimeShort(b.end)}, ${locked ? 'locked' : 'confirmed'})? You can undo right after.`, 'Delete'))) return; }
+      else closeModal();
+      commit('blocks', 'remove ' + b.title, bl => bl.splice(bl.findIndex(x => x.id === id), 1), { toast: `Deleted “${b.title}”` });
+    };
+  });
+}
+function openAddSheet() {
+  const d = R.date, gaps = freeGaps(d).slice(0, 4);
+  openModal(`<div class="mh"><h3>Add to ${d === todayISO() ? 'today' : fmtDate(d, { weekday: 'short', month: 'short', day: 'numeric' })}</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
+  <div class="mb stack">
+    <form id="addQ" class="stack" autocomplete="off"><label class="f">Type it the way you'd say it<input id="addQi" enterkeyhint="done" placeholder="Yoga 9–10am tomorrow · Call landlord · move Homework to 2pm"></label><button class="btn primary" style="align-self:start">Add</button></form>
+    <div class="row"><button class="btn" id="addBlk">＋ Time block…</button><button class="btn" id="addTsk">＋ Next step…</button></div>
+    ${gaps.length ? `<div><div class="tiny muted sans" style="margin-bottom:.35rem">Open time${d === todayISO() ? ' left today' : ''} — tap to fill it</div><div class="row">${gaps.map(([s, e]) => `<button class="btn sm" data-gs="${s}" data-ge="${Math.min(e, s + 60)}">${fmtTimeShort(s)}–${fmtTimeShort(e)}</button>`).join('')}</div></div>` : ''}
+  </div>`, m => {
+    $('#addQ', m).onsubmit = e => { e.preventDefault(); const v = $('#addQi', m).value.trim(); if (!v) return; closeModal(); quickAdd(v); };
+    $('#addBlk', m).onclick = () => { closeModal(); setTimeout(() => ACT.addBlock(), 30); };
+    $('#addTsk', m).onclick = () => { closeModal(); setTimeout(() => openTaskEditor(null), 30); };
+    $$('[data-gs]', m).forEach(x => x.onclick = () => { closeModal(); setTimeout(() => openBlockEditor(null, { date: d, start: +x.dataset.gs, end: +x.dataset.ge }), 30); });
+  });
+}
+Object.assign(ACT, {
+  addMenu: () => openAddSheet(),
+  seeOverlaps: () => { const o = $('#overlapCard'); if (o) o.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
+});
 /* ================= shared list helpers ================= */
 function getArr(path) { const { k, walk } = resolvePath(path + '.x'); const [o] = walk(S[k]); return o; }
 function field(path, c, it) {
@@ -1316,8 +1517,8 @@ function field(path, c, it) {
 }
 function tableEditor({ path, cols, items, addLabel, newItem, empty, rowClass }) {
   items = items || getArr(path);
-  return `<div style="overflow-x:auto"><table class="t"><thead><tr>${cols.map(c => `<th style="${c.w ? 'width:' + c.w : ''}">${esc(c.label)}</th>`).join('')}<th style="width:2rem"></th></tr></thead><tbody>
-  ${items.length ? items.map(it => `<tr class="${rowClass ? rowClass(it) : ''}">${cols.map(c => `<td class="${c.type === 'number' ? 'num' : ''}">${c.render ? c.render(it) : field(path, c, it)}</td>`).join('')}<td><button class="iconbtn" data-act="delRow" data-path="${path}" data-id="${it.id}" aria-label="Remove">✕</button></td></tr>`).join('')
+  return `<div style="overflow-x:auto"><table class="t cards"><thead><tr>${cols.map(c => `<th style="${c.w ? 'width:' + c.w : ''}">${esc(c.label)}</th>`).join('')}<th style="width:2rem"></th></tr></thead><tbody>
+  ${items.length ? items.map(it => `<tr class="${rowClass ? rowClass(it) : ''}">${cols.map(c => `<td class="${c.type === 'number' ? 'num' : ''} ${c.type === 'area' || c.wide || /descr|title|name|item|note|what|detail|task|step/i.test(c.label) ? 'wide' : ''}" data-label="${esc(c.label)}">${c.render ? c.render(it) : field(path, c, it)}</td>`).join('')}<td><button class="iconbtn" data-act="delRow" data-path="${path}" data-id="${it.id}" aria-label="Remove">✕</button></td></tr>`).join('')
       : `<tr><td colspan="${cols.length + 1}"><div class="empty small" style="border:0">${esc(empty || 'Nothing here yet.')}</div></td></tr>`}
   </tbody></table></div>${addLabel ? `<button class="btn sm" style="margin-top:.6rem" data-act="addRow" data-path="${path}" data-new='${esc(JSON.stringify(newItem || {}))}'>＋ ${esc(addLabel)}</button>` : ''}`;
 }
@@ -1741,6 +1942,11 @@ VIEWS.backup = () => {
     <div class="card stack"><h3>Backup & restore</h3><p class="small">The original Life Garden couldn't be exported — that's why this archive only had guides. Keep a copy now and then.</p><p class="tiny muted sans">${counts}</p>
       <div class="row"><button class="btn primary" data-act="exportJson">⇩ Download backup (.json)</button><button class="btn" data-act="copyJson">Copy backup text</button></div>
       <details class="disc"><summary>Restore from a backup</summary><div class="in stack"><input type="file" id="impFile" accept=".json,application/json"><textarea id="impText" placeholder="…or paste backup text here" rows="3"></textarea><button class="btn" data-act="importJson">Restore (replaces current plan)</button></div></details></div>
+    <div class="card stack"><h3>Restore points</h3><p class="small">Automatic copies of the whole plan kept on this device: one before every app update, one a day, and one before any restore, reset, import or large change from the Sheet. Restoring saves the current plan as a restore point first, so it can always be undone.</p>
+      <div id="snapList" class="stack small sans"><span class="muted">Loading…</span></div>
+      <div class="row"><button class="btn sm" data-act="snapNow">Save a restore point now</button></div></div>
+  </div>
+  <details class="disc" style="margin-top:1rem"><summary>More tools — calendar files, recovered draft, start over</summary><div class="grid2" style="margin-top:.8rem">
     <div class="card stack"><h3>Calendar files</h3><p class="small">Send your blocks to Google Calendar, Apple Calendar or Outlook as an .ics file, or bring events in from one.</p>
       <div class="fgrid"><label class="f">From<input type="date" id="icsFrom" value="${todayISO()}"></label><label class="f">To<input type="date" id="icsTo" value="${addDays(todayISO(), 30)}"></label><label class="f">Reminder (min before)<input type="number" min="0" data-b="settings.icsAlarm" value="${st.icsAlarm ?? ''}" placeholder="none"></label></div>
       <label class="row small sans"><input type="checkbox" data-b="settings.icsDraft" ${st.icsDraft ? 'checked' : ''}> Include proposed draft blocks</label>
@@ -1752,9 +1958,10 @@ VIEWS.backup = () => {
       <div class="row"><label class="row small sans"><input type="checkbox" data-b="settings.showDraft" data-rerender="1" ${st.showDraft !== false ? 'checked' : ''}> Show proposed blocks on the calendar</label></div>
       <button class="btn danger sm" data-act="removeDraft" style="align-self:start">Remove untouched recovered blocks</button></div>
     <div class="card stack"><h3>Start over</h3><p class="small">Clears every section back to the starting setup. Download a backup first.</p><button class="btn danger" data-act="resetAll" style="align-self:start">Reset the whole plan</button></div>
-  </div>`;
+  </div></details>`;
 };
 VIEWS.backup_after = () => {
+  fillSnapList();
   $$('[data-pp]').forEach(el => el.onchange = () => commit('settings', 'people', st => { st.people[+el.dataset.pp] = el.value.trim(); st.people = st.people.filter((p, i) => p || i < 2); }));
   const rf = $('#recFile'); if (rf) rf.onchange = async () => {
     const file = rf.files[0]; if (!file) return; let o;
@@ -1831,19 +2038,20 @@ Object.assign(ACT, {
   disconnect: async () => { if (await confirmBox('Stop syncing this device? The plan stays on this phone; the Sheet keeps its copy.', 'Disconnect')) { disconnectSheet(); render(); } },
 });
 const backupText = () => JSON.stringify({ app: 'life-garden', version: 1, exported: new Date().toISOString(), data: S }, null, 1);
-function restore(txt) {
+async function restore(txt, label = 'Backup restored') {
   let o; try { o = JSON.parse(txt); } catch (e) { return toast('That isn’t valid backup text'); }
   const d = o.data || o; if (!d.blocks || !d.settings) return toast('That doesn’t look like a Life Garden backup');
+  await takeSnapshot('Before restoring a backup');
   undoStack.push(...SECTIONS.map(k => ({ k, prev: JSON.stringify(S[k]), label: 'restore' })));
   const base = defaults(); for (const k of SECTIONS) { S[k] = d[k] !== undefined ? d[k] : base[k]; markDirty(k); }
-  render(); toast('Backup restored', 'Undo', () => { for (let i = 0; i < SECTIONS.length; i++) undo(); });
+  render(); toast(label, 'Undo', () => { for (let i = 0; i < SECTIONS.length; i++) undo(); });
 }
 Object.assign(ACT, {
   exportJson: () => downloadFile(`life-garden-backup-${todayISO()}.json`, backupText(), 'application/json'),
   copyJson: () => navigator.clipboard?.writeText(backupText()).then(() => toast('Backup copied — paste it somewhere safe'), () => toast('Clipboard not allowed here')),
   importJson: async () => { const f = $('#impFile').files[0]; const txt = f ? await f.text() : $('#impText').value; if (!txt.trim()) return toast('Choose a file or paste backup text'); if (await confirmBox('Replace the whole current plan with this backup?', 'Restore')) restore(txt); },
   exportIcs: () => { const a = $('#icsFrom').value, b = $('#icsTo').value; const n = S.blocks.filter(x => x.date >= a && x.date <= b && !x.icsUid && !x.sleep && (x.status !== 'proposed' || S.settings.icsDraft)).length; if (!n) return toast('No planner blocks in that range'); downloadFile(`life-garden-${a}-to-${b}.ics`, toICS(a, b), 'text/calendar'); toast(`${n} block${n === 1 ? '' : 's'} exported`); },
-  resetAll: async () => { if (!(await confirmBox('Reset everything? A backup is the only way back after you leave this page.', 'Reset'))) return; const base = defaults(); for (const k of SECTIONS) { undoStack.push({ k, prev: JSON.stringify(S[k]), label: 'reset' }); S[k] = base[k]; markDirty(k); } render(); toast('Plan reset'); },
+  resetAll: async () => { if (!(await confirmBox('Reset everything? A restore point of the current plan is saved first (Settings → Restore points).', 'Reset'))) return; await takeSnapshot('Before reset'); const base = defaults(); for (const k of SECTIONS) { undoStack.push({ k, prev: JSON.stringify(S[k]), label: 'reset' }); S[k] = base[k]; markDirty(k); } render(); toast('Plan reset'); },
 });
 
 /* ================= recovered working-draft import ================= */
@@ -1890,9 +2098,9 @@ function openRecoveryImport(pack) {
     };
     const upd = () => { const p = pick(), dup = p.filter(b => have.has(b.id)).length; $('#riSum', m).textContent = `${p.length - dup} blocks will be added${dup ? `, ${dup} already in your plan are skipped` : ''}. You can undo this, or later remove every untouched recovered block from Settings & backup.`; };
     m.addEventListener('change', upd); upd();
-    $('#riGo', m).onclick = () => {
+    $('#riGo', m).onclick = async () => {
       const opts = { blocks: pick(), notes: $('#riNotes', m).checked, qs: $('#riQs', m).checked, sleepWin: $('#riSleepWin', m).checked };
-      closeModal(); applyRecovery(pack, opts);
+      closeModal(); await takeSnapshot('Before importing the recovery pack'); applyRecovery(pack, opts);
     };
   });
 }
@@ -1900,10 +2108,30 @@ Object.assign(ACT, {
   removeDraft: async () => {
     const n = S.blocks.filter(b => b.src === 'draft' && !b.edited && !b.done).length;
     if (!n) return toast('No untouched recovered blocks to remove');
-    if (await confirmBox(`Remove ${n} recovered draft blocks you haven't edited or marked done? Blocks you changed stay.`, 'Remove')) commit('blocks', 'remove recovered draft', bl => { for (let i = bl.length - 1; i >= 0; i--) if (bl[i].src === 'draft' && !bl[i].edited && !bl[i].done) bl.splice(i, 1); }, { toast: `Removed ${n} recovered blocks` });
+    if (await confirmBox(`Remove ${n} recovered draft blocks you haven't edited or marked done? Blocks you changed stay.`, 'Remove')) { await takeSnapshot('Before removing recovered draft blocks'); commit('blocks', 'remove recovered draft', bl => { for (let i = bl.length - 1; i >= 0; i--) if (bl[i].src === 'draft' && !bl[i].edited && !bl[i].done) bl.splice(i, 1); }, { toast: `Removed ${n} recovered blocks` }); }
   },
 });
 
+
+/* ---------- restore points UI ---------- */
+async function fillSnapList() {
+  const box = $('#snapList'); if (!box) return;
+  const all = await snapList();
+  if (!$('#snapList')) return;
+  box.innerHTML = all.length ? all.map(o => `<div class="snaprow"><div><b>${new Date(o.t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</b> · ${esc(o.reason)}<br><span class="muted tiny">${o.counts.blocks} blocks · ${o.counts.tasks} next steps · ${o.counts.money} money entries · ${o.counts.notes} day notes · v${esc(o.version)}</span></div>
+    <div class="row"><button class="btn sm" data-act="snapDownload" data-t="${o.t}">Download</button><button class="btn sm" data-act="snapRestore" data-t="${o.t}">Restore</button></div></div>`).join('')
+    : '<span class="muted">No restore points yet — one is made the first time the plan has something in it.</span>';
+}
+Object.assign(ACT, {
+  snapNow: async () => { toast(await takeSnapshot('Saved by hand') ? 'Restore point saved' : 'Couldn’t save a restore point on this device'); fillSnapList(); },
+  snapDownload: async el => { const o = await snapGet(el.dataset.t); if (o) downloadFile(`life-garden-restore-point-${o.day}.json`, JSON.stringify({ app: 'life-garden', version: 1, exported: new Date(o.t).toISOString(), reason: o.reason, data: JSON.parse(o.data) }, null, 1), 'application/json'); },
+  snapRestore: async el => {
+    const o = await snapGet(el.dataset.t); if (!o) return toast('That restore point is gone');
+    const c = snapCounts(S);
+    if (!(await confirmBox(`Go back to the plan from ${new Date(o.t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}? It has ${o.counts.blocks} blocks and ${o.counts.tasks} next steps (now: ${c.blocks} and ${c.tasks}). The current plan is saved as a restore point first${sync.cfg ? ', and the Sheet will be updated to match' : ''}.`, 'Restore'))) return;
+    await restore(JSON.stringify({ data: JSON.parse(o.data) }), 'Restore point loaded'); fillSnapList();
+  },
+});
 /* ================= Voice assistant ("Ask Life Garden") ================= */
 const voice = { rec: null, busy: false };
 document.body.insertAdjacentHTML('beforeend', '<button id="voiceFab" aria-label="Ask Life Garden by voice" title="Ask Life Garden">🎙</button>');
@@ -2589,6 +2817,7 @@ if (!S.capacity.whatIf) S.capacity.whatIf = {};
 parseHash();
 
 render();
+bootSnapshots().catch(e => console.warn('restore points', e));
 (function handleConnectLink() {
   const m = location.hash.match(/^#connect=(.+)$/); if (!m) return;
   const cfg = readSetupCode(m[1]); history.replaceState(null, '', '#today'); R.view = 'today';
