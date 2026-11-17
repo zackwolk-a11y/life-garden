@@ -313,7 +313,7 @@ body{padding-left:var(--sal);padding-right:var(--sar);overscroll-behavior-y:none
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.17-b';
+const APP_VERSION = '2026.11.17-c';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -1852,11 +1852,50 @@ function encodeWav(samples, rate) {
   return new Uint8Array(buf);
 }
 function toBase64(bytes) { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); }
-function speak(text) {
-  if (S.settings.speakReplies === false || !('speechSynthesis' in window) || !text) return;
-  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = 1.02; speechSynthesis.speak(u); } catch (e) { }
+/* ----- reading replies aloud: an iPhone/computer voice, or a ChatGPT voice ----- */
+const OA_VOICES = ['coral', 'nova', 'shimmer', 'sage', 'alloy', 'ballad', 'ash', 'echo', 'fable', 'onyx', 'verse'];
+const sysVoices = () => { try { return speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)); } catch (e) { return []; } };
+if ('speechSynthesis' in window) try { speechSynthesis.onvoiceschanged = () => { if (R.view === 'backup' && !dlg().open && !(document.activeElement && /SELECT|INPUT/.test(document.activeElement.tagName))) render(); }; } catch (e) { }
+const player = new Audio(); player.preload = 'auto';
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA=';
+function unlockSpeech() {   // called from a tap, so iPhone allows audio a moment later
+  try { if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (e) { }
+  try { player.src = SILENT; const p = player.play(); p && p.catch(() => { }); } catch (e) { }
 }
-function unlockSpeech() { try { if ('speechSynthesis' in window) { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } } catch (e) { } }
+function speakSystem(text, rate) {
+  if (!('speechSynthesis' in window)) return;
+  try {
+    speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.rate = rate;
+    const want = String(S.settings.speakVoice || '').replace(/^sys:/, ''), v = want && sysVoices().find(x => x.voiceURI === want || x.name === want);
+    if (v) { u.voice = v; u.lang = v.lang; }
+    speechSynthesis.speak(u);
+  } catch (e) { }
+}
+async function speak(text, force) {
+  if ((S.settings.speakReplies === false && !force) || !text) return;
+  const choice = String(S.settings.speakVoice || ''), rate = +S.settings.speakRate || 1;
+  if (choice.startsWith('oa:')) {
+    const key = localOpenAIKey() || await openaiKey().catch(() => null);
+    if (key) {
+      for (const model of ['gpt-4o-mini-tts', 'tts-1']) {
+        try {
+          const body = { model, voice: choice.slice(3), input: text, response_format: 'mp3', speed: Math.max(0.5, Math.min(2, rate)) };
+          if (model !== 'tts-1') body.instructions = 'Warm, calm and friendly, like a supportive friend helping plan the day.';
+          const ctrl = new AbortController(), to = setTimeout(() => ctrl.abort(), 12000);
+          const r = await fetch('https://api.openai.com/v1/audio/speech', { method: 'POST', headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: ctrl.signal }).finally(() => clearTimeout(to));
+          if (r.status === 404 || r.status === 400) continue;
+          if (!r.ok) break;
+          const url = URL.createObjectURL(await r.blob());
+          try { speechSynthesis.cancel(); } catch (e) { }
+          player.pause(); player.src = url; await player.play(); player.onended = () => URL.revokeObjectURL(url);
+          return;
+        } catch (e) { break; }
+      }
+    }
+  }
+  speakSystem(text, rate);                                     // fallback: the device's own voice
+}
+function stopSpeaking() { try { speechSynthesis.cancel(); } catch (e) { } try { player.pause(); } catch (e) { } }
 
 /* ----- what the assistant gets to see: about ten days of the plan and open next steps ----- */
 function agentContext() {
@@ -1963,7 +2002,7 @@ function openVoice(autoStart) {
     if (autoStart && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) beginRecording();
     voiceKey().catch(() => { });
   });
-  dlg().addEventListener('close', () => { if (voice.rec) { voice.rec.cancel(); voice.rec = null; } try { speechSynthesis.cancel(); } catch (e) { } }, { once: true });
+  dlg().addEventListener('close', () => { if (voice.rec) { voice.rec.cancel(); voice.rec = null; } stopSpeaking(); }, { once: true });
 }
 const vStatus = t => { const el = $('#vStatus'); if (el) el.textContent = t; };
 async function beginRecording() {
@@ -2230,6 +2269,16 @@ function voiceCard() {
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
+    <div class="row" style="align-items:flex-end">
+      <label class="f grow">Voice<select data-b="settings.speakVoice">
+        <option value="">This device's default voice</option>
+        ${sysVoices().length ? `<optgroup label="${/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone' : 'This device'} voices (free, instant)">${sysVoices().map(v => `<option value="sys:${esc(v.voiceURI)}" ${S.settings.speakVoice === 'sys:' + v.voiceURI ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</optgroup>` : ''}
+        <optgroup label="ChatGPT voices (natural; needs the OpenAI key)">${OA_VOICES.map(v => `<option value="oa:${v}" ${S.settings.speakVoice === 'oa:' + v ? 'selected' : ''}>${v[0].toUpperCase() + v.slice(1)}</option>`).join('')}</optgroup>
+      </select></label>
+      <label class="f" style="width:7rem">Speed<select data-b="settings.speakRate" data-t="num">${[[0.85, 'Slower'], [1, 'Normal'], [1.15, 'Faster'], [1.3, 'Fast']].map(([v, l]) => `<option value="${v}" ${(+S.settings.speakRate || 1) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <button class="btn sm" data-act="previewVoice">▶ Preview</button>
+    </div>
+    <p class="tiny muted sans" style="margin:0">iPhone voices: download nicer ones (marked Enhanced or Premium) in iPhone Settings → Accessibility → Spoken Content → Voices, then reopen the app. ChatGPT voices take about a second longer to start and cost a fraction of a cent per reply.</p>
     <details class="disc"><summary>Speed: key on this device ${localVoiceKey() ? '✓' : ''}</summary><div class="in small stack"><p style="margin:0">For the fastest answers this device talks to Gemini directly. It normally fetches the key from the Sheet script; if the script hasn't been updated, paste the Gemini key here instead. It is stored only on this device.</p>
       <div class="row"><input id="vKey" type="password" class="grow" placeholder="AIza…" value="${esc(localVoiceKey())}" autocomplete="off"><button class="btn sm" data-act="saveVoiceKey">Save</button></div></div></details></div>`;
 }
@@ -2237,6 +2286,7 @@ ACT.voiceTry = () => openVoice(false);
 ACT.saveVoiceKey = () => { const v = $('#vKey').value.trim(); try { if (v) localStorage.setItem(LOCAL_KEY, v); else localStorage.removeItem(LOCAL_KEY); localStorage.removeItem(COMBO_KEY); } catch (e) { } render(); toast(v ? 'Key saved on this device' : 'Key removed from this device'); };
 setTimeout(() => { if (sync.cfg || localVoiceKey()) voiceKey().catch(() => { }); }, 2500);   // warm up so the first question doesn't wait
 ACT.saveOpenAIKey = () => { const v = $('#oaKey').value.trim(); try { if (v) localStorage.setItem(OPENAI_LOCAL, v); else localStorage.removeItem(OPENAI_LOCAL); localStorage.removeItem(OPENAI_COMBO); } catch (e) { } if (v && S.settings.voiceProvider !== 'openai') commit('settings', 'voice provider', st => { st.voiceProvider = 'openai'; }); render(); toast(v ? 'ChatGPT key saved on this device' : 'ChatGPT key removed from this device'); };
+ACT.previewVoice = () => { unlockSpeech(); speak('Hi Jordan. I added tea with Sarah on Friday, November 20th, at 3 PM.', true); };
 /* ================= boot ================= */
 loadLocal();
 if (!S.capacity.whatIf) S.capacity.whatIf = {};
