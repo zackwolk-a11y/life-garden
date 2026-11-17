@@ -1675,7 +1675,12 @@ function sheetCard() {
   if (c) return `<div class="card stack" style="grid-column:1/-1"><div class="row between"><h3>Google Sheet sync</h3><span class="chip good">connected</span></div>
     <p class="small" style="margin:0">Changes sync about a minute after you make them, and whenever the app opens. Edits made in the Sheet — by you or Gemini — appear here the same way. A dated backup is saved daily to the “Life Garden backups” folder in Drive.</p>
     <div class="row">${c.sheetUrl ? `<a class="btn" href="${esc(c.sheetUrl)}" target="_blank" rel="noopener">Open the Sheet ↗</a>` : ''}<button class="btn primary" data-act="syncNow">Sync now</button><button class="btn" data-act="copySetupLink">Copy setup link for another phone</button><button class="btn ghost danger" data-act="disconnect">Disconnect this device</button></div>
-    <p class="tiny muted sans">The setup link contains the passcode. Send it only to devices that should see the plan, and delete the message afterwards.</p></div>`;
+    <p class="tiny muted sans">The setup link contains the passcode. Send it only to devices that should see the plan, and delete the message afterwards.</p>
+    <details class="disc"><summary>Troubleshooting</summary><div class="in small stack">
+      <p style="margin:0">This device has <b>${S.blocks.length}</b> time blocks, <b>${S.tasks.length}</b> next steps and <b>${Object.keys(S.daynotes).length}</b> day notes. Last sync: ${sync.lastPull ? new Date(sync.lastPull).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'not yet this session'} · status: ${esc($('#savePill') ? $('#savePill').textContent : '')}</p>
+      <div class="row"><button class="btn sm" data-act="pushAll">Send this device's whole plan to the Sheet</button><button class="btn sm" data-act="pullAll">Reload the plan from the Sheet</button></div>
+      <p class="tiny muted sans">“Send” adds or updates every item from this device in the Sheet and deletes nothing. “Reload” replaces this device's copy with what's in the Sheet.</p>
+    </div></details></div>`;
   return `<div class="card stack" style="grid-column:1/-1"><h3>Connect a Google Sheet</h3>
     <p class="small" style="margin:0">Got a setup link or code from someone who already connected? Paste it here:</p>
     <div class="row"><input id="setupCode" placeholder="Setup link or code" class="grow" autocomplete="off"><button class="btn primary" data-act="connectCode">Connect</button></div>
@@ -1697,6 +1702,16 @@ async function doConnect(cfg) {
 }
 Object.assign(ACT, {
   syncNow: () => syncNow(),
+  pushAll: async () => {
+    if (!(await confirmBox(`Send all ${S.blocks.length} blocks and the rest of this device's plan to the Google Sheet? Nothing in the Sheet is deleted.`, 'Send'))) return;
+    sync.base = null; saveSyncState(); sync.localRev++; await syncNow();
+    render(); toast(sync.status === 'saved' ? 'Sent — open the Sheet’s “Time blocks” tab to check' : 'Couldn’t send yet — see the status at the top');
+  },
+  pullAll: async () => {
+    if (!(await confirmBox('Replace this device’s copy with the plan in the Google Sheet?', 'Reload'))) return;
+    try { setStatus('saving', 'Loading from the Sheet…'); const d = await api('GET', {}); const theme = S.settings.theme; adoptServer(d); S.settings.theme = theme; sync.base = snapshotRows(); sync.hash = d.hash; saveLocal(); saveSyncState(); setStatus('saved', 'Synced with Google Sheet'); render(); toast(`Loaded ${S.blocks.length} blocks from the Sheet`); }
+    catch (e) { setStatus('error', e.message || 'Couldn’t load'); toast(e.message || 'Couldn’t load from the Sheet'); }
+  },
   connectSheet: () => doConnect({ url: $('#sheetUrl').value, key: $('#sheetKey').value }),
   connectCode: () => { const c = readSetupCode($('#setupCode').value); if (!c) return toast('That doesn’t look like a setup link or code'); doConnect(c); },
   copySetupLink: () => navigator.clipboard?.writeText(setupLink(sync.cfg)).then(() => toast('Setup link copied — text it to Jordan'), () => openModal(`<div class="mh"><h3>Setup link</h3></div><div class="mb"><textarea rows="4" readonly>${esc(setupLink(sync.cfg))}</textarea></div><div class="mf"><button class="btn" data-act="close">Done</button></div>`)),
