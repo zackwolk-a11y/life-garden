@@ -215,7 +215,7 @@ function planActions(actions) {
 }
 
 /* ----- the panel ----- */
-function openVoice(autoStart) {
+function openVoice(autoStart, noLive) {
   if (!sync.cfg && !localVoiceKey() && !localOpenAIKey()) return openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="mb small"><p>Voice needs a key on this device first. Paste a ChatGPT (OpenAI) key, which starts with <code>sk-</code>, and tap Save:</p>
       <div class="row"><input id="oaKeyQuick" type="password" class="grow" placeholder="sk-…" autocomplete="off"><button class="btn primary" id="vSaveKey">Save</button></div>
@@ -224,6 +224,7 @@ function openVoice(autoStart) {
       $('#vGo', m).onclick = () => { closeModal(); go('backup'); };
       $('#vSaveKey', m).onclick = () => { const v = $('#oaKeyQuick', m).value.trim(); if (!/^sk-/.test(v)) return toast('That doesn’t look like an OpenAI key — it starts with sk-'); try { localStorage.setItem(OPENAI_LOCAL, v); } catch (e) { } commit('settings', 'voice provider', st => { st.voiceProvider = 'openai'; }, { render: false }); closeModal(); toast('ChatGPT key saved on this device'); openVoice(true); };
     });
+  if (!noLive && liveOn() && (localOpenAIKey() || sync.cfg)) return openLive();   // live conversation: tap once, then just talk
   openModal(`<div class="mh"><h3>Ask Life Garden</h3><button class="iconbtn" data-act="close" aria-label="Close">✕</button></div>
     <div class="mb stack">
       <div class="vmic-wrap"><button class="vmic" id="vMic" aria-label="Start talking"><span>🎙</span></button><div class="vlevel"><i id="vLevel"></i></div></div>
@@ -533,6 +534,7 @@ function voiceCard() {
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.briefingOn" ${S.settings.briefingOn !== false ? 'checked' : ''}> Show a daily briefing the first time the app opens each day</label>
+    <label class="row small sans"><input type="checkbox" data-b="settings.voiceLive" ${S.settings.voiceLive !== false ? 'checked' : ''}> Live conversation (ChatGPT key): tap 🎙 once, then just talk — interrupt any time</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceHandsFree2" ${S.settings.voiceHandsFree2 === true ? 'checked' : ''}> Hands-free: keep listening after each reply (say “that's all” to end). Off = tap the mic each time.</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
     <div class="row" style="align-items:flex-end">
