@@ -399,7 +399,7 @@ button.chip{cursor:pointer;font:inherit;font-family:var(--sans)}
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.18-f';
+const APP_VERSION = '2026.11.18-g';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -2289,7 +2289,35 @@ function agentContext() {
     blocks: S.blocks.filter(b => b.date >= from && b.date <= to && !b.sleep && !(b.status === 'proposed' && draftHidden())).sort((a, b) => (a.date + hhmm(a.start)).localeCompare(b.date + hhmm(b.start)))
       .map(b => [b.id, b.date, hm(b.start) + '-' + hm(b.end), b.title, b.kind, st[b.status] || '', b.done ? 'done' : ''].join('|').replace(/\|+$/, '')),
     next_steps: S.tasks.filter(t => !t.done).slice(0, 40).map(t => t.id + '|' + t.title + (t.date ? '|' + t.date : '')),
+    dashboard: dashboardContext(),
   };
+}
+/* ----- the rest of the dashboard (read-only for the assistant): every tab, trimmed to fit ----- */
+function slim(v, depth = 0) {   // drop ids, empty values and long text so each section stays small
+  if (Array.isArray(v)) return v.map(x => slim(x, depth + 1)).filter(x => x !== undefined);
+  if (v && typeof v === 'object') { const o = {}; for (const [k, x] of Object.entries(v)) { if (k === 'id' || x === '' || x == null || x === false) continue; const y = slim(x, depth + 1); if (y === undefined || (Array.isArray(y) && !y.length) || (y && typeof y === 'object' && !Array.isArray(y) && !Object.keys(y).length)) continue; o[k] = y; } return o; }
+  if (typeof v === 'string') return v.length > 240 ? v.slice(0, 240) + '…' : v;
+  return v;
+}
+function capJSON(v, max) {
+  const s = JSON.stringify(v); if (s.length <= max) return v;
+  if (Array.isArray(v)) { let n = v.length; while (n > 1 && JSON.stringify(v.slice(-n)).length > max) n = Math.ceil(n * .7); return { note: `showing the latest ${n} of ${v.length}`, items: v.slice(-n) }; }
+  return { note: 'shortened to fit', preview: s.slice(0, max) };
+}
+function dashboardContext() {
+  const t0 = todayISO(), M = S.money || {};
+  const recent = (M.entries || []).filter(e => !e.date || e.date >= addDays(t0, -60));
+  const notes = {}; for (let i = -1; i < 14; i++) { const d = addDays(t0, i); if (S.daynotes && S.daynotes[d]) notes[d] = S.daynotes[d]; }
+  const sec = {
+    tabs: NAV.filter(n => n[0] !== 'sep').map(n => n[2]),
+    capacity: slim(S.capacity), routines: slim(S.routines), together: slim(S.together),
+    money: { recent_entries: capJSON(slim(recent), 4000), funds: slim(M.funds), presets: slim((M.presets || []).map(p => ({ name: p.name, type: p.type, amount: p.amount }))), reference: capJSON(slim(M.reference), 1200) },
+    projects: capJSON(slim(S.projects), 4000), content: capJSON(slim(S.content), 1500),
+    move_and_downsizing: { move: capJSON(slim(S.move), 3000), downsize: capJSON(slim(S.downsize), 1500) },
+    opportunities: capJSON(slim(S.opps), 2500), well_being: capJSON(slim(S.well), 2000), family_prep: capJSON(slim(S.prep), 2000),
+    day_notes: notes, done_recently: S.tasks.filter(t => t.done).slice(-10).map(t => t.title),
+  };
+  return sec;
 }
 /* ----- turn the assistant's proposals into checked, human-readable changes ----- */
 const shortDay = d => fmtDate(d, { weekday: 'short', month: 'short', day: 'numeric' });
@@ -2443,6 +2471,7 @@ const VOICE_RULES = [
   'To move a block, use update_block with its id and the new date/start/end, keeping its length unless she says otherwise. "Mark X done" is update_block with done=true. To-dos without a time are add_step (date only if she gave a day).',
   'Money: add_money only when she states an amount. It is an estimate unless she says it was already paid or received.',
   'Questions about her plan ("what\'s on Thursday?") get a spoken answer and no actions.',
+  'You can also see her whole dashboard in "dashboard": every tab (Today, Week & month, Capacity, Money, Projects, Move & downsizing, Opportunities, Well-being, Family prep, Settings), with money entries and savings funds, projects and their next steps, the move plan, opportunities, well-being, family prep, routines and day notes. Answer questions about any of it plainly. You can only change time blocks, next steps and money entries through actions; for anything else, tell her which tab to open to edit it.',
   'Never say you added, moved, finished or removed something unless that exact action is in "actions" — the app only changes what is in "actions".',
   'If she asks about your voice, speed or the app itself: your reading voice and speed can be changed in Settings & backup → Voice assistant → Voice and Speed (iPhone voices or ChatGPT voices like Nova, Coral or Shimmer). Say that briefly and return no actions.',
   'Reply in one or two short, plain sentences suitable to be read aloud. Do not repeat every detail of the change; the app shows it on screen. Never give medical, legal or financial advice.',
@@ -2607,7 +2636,7 @@ async function askAgent(input) {
   } finally { voice.busy = false; clearInterval(tick); }
 }
 
-const handsFree = () => S.settings.voiceHandsFree === true;   // off unless turned on: after a reply she taps the mic to say more
+const handsFree = () => S.settings.voiceHandsFree2 === true;   // off unless turned on: after a reply she taps the mic to say more
 const STOP_WORDS = /^(?:ok(?:ay)?[,. ]*)?(?:that'?s (?:all|it)|thanks?(?: you)?|thank you|no(?:pe)?,? (?:that'?s|thanks)|stop|done|bye|goodbye|never ?mind|i'?m (?:done|good))\b/i;
 async function afterReply(a, canContinue) {
   voice.history = (voice.history || []).concat([{ she_said: a.heard || '', you_replied: a.reply || '' }]).slice(-3);
@@ -2669,7 +2698,7 @@ function voiceCard() {
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.briefingOn" ${S.settings.briefingOn !== false ? 'checked' : ''}> Show a daily briefing the first time the app opens each day</label>
-    <label class="row small sans"><input type="checkbox" data-b="settings.voiceHandsFree" ${S.settings.voiceHandsFree === true ? 'checked' : ''}> Hands-free: keep listening after each reply (say “that's all” to end). Off = tap the mic each time.</label>
+    <label class="row small sans"><input type="checkbox" data-b="settings.voiceHandsFree2" ${S.settings.voiceHandsFree2 === true ? 'checked' : ''}> Hands-free: keep listening after each reply (say “that's all” to end). Off = tap the mic each time.</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
     <div class="row" style="align-items:flex-end">
       <label class="f grow">Voice<select data-b="settings.speakVoice">
