@@ -1,5 +1,5 @@
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.18-a';
+const APP_VERSION = '2026.11.18-b';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -117,11 +117,20 @@ function loadLocal() {
 }
 function saveLocal() { try { localStorage.setItem(LS_KEY, JSON.stringify(S)); } catch (e) { } }
 function saveSyncState() { try { localStorage.setItem(LS_SYNC, JSON.stringify({ cfg: sync.cfg, base: sync.base, hash: sync.hash, backupDay: sync.backupDay })); } catch (e) { } }
+const STATUS_SHORT = { saved: 'Synced', saving: 'Syncing…', pending: 'Syncing…', local: 'Saved', error: 'Sync problem', loading: 'Loading…' };
+let statusFade = null, lastStatus = '';
+function showStatus() {
+  const pill = $('#savePill'); if (!pill) return;
+  pill.classList.remove('faded'); clearTimeout(statusFade);
+  if (sync.status !== 'error') statusFade = setTimeout(() => pill.classList.add('faded'), 20000);   // problems stay visible
+}
 function setStatus(st, text) {
   sync.status = st;
   const col = { saved: 'var(--good)', saving: 'var(--warn)', pending: 'var(--warn)', local: 'var(--ink3)', error: 'var(--bad)', loading: 'var(--ink3)' }[st];
   const pill = $('#savePill'); if (!pill) return;
-  pill.innerHTML = `<span class="dot" style="background:${col}"></span><span>${esc(text)}</span>`;
+  pill.title = text;
+  pill.innerHTML = `<span class="dot" style="background:${col}"></span><span class="pl-full">${esc(text)}</span><span class="pl-short" aria-hidden="true">${esc(STATUS_SHORT[st] || text)}</span>`;
+  if (st + text !== lastStatus) { lastStatus = st + text; showStatus(); }   // the same status again (e.g. the minute-by-minute check) doesn't bring it back
 }
 function markDirty(k) {
   sync.localRev++; saveLocal();

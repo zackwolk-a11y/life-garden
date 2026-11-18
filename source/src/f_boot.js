@@ -4,6 +4,7 @@ if (!S.capacity.whatIf) S.capacity.whatIf = {};
 parseHash();
 
 render();
+$('#heroTitle') && $('#heroTitle').addEventListener('click', showStatus);   // tap the title to see the sync status again
 bootSnapshots().catch(e => console.warn('restore points', e));
 (function handleConnectLink() {
   const m = location.hash.match(/^#connect=(.+)$/); if (!m) return;
