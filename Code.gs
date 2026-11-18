@@ -332,27 +332,27 @@ function connectCalendar() {
   try { SpreadsheetApp.getUi().alert('Google Calendar connected — ' + n + ' calendar' + (n === 1 ? '' : 's') + ' found.\n\nLast step: Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy.'); } catch (e) { Logger.log(n + ' calendars found'); }
 }
 function calendar_(body) {
-  const back = Math.min(Math.max(+body.back || 2, 0), 14), days = Math.min(Math.max(+body.days || 60, 7), 120);
+  const t0 = Date.now(), back = Math.min(Math.max(+body.back || 2, 0), 14), days = Math.min(Math.max(+body.days || 60, 7), 120);
   const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - back);
   const to = new Date(from.getTime() + (back + days) * 864e5);
-  const want = Array.isArray(body.cals) && body.cals.length ? body.cals : null;
+  const want = Array.isArray(body.cals) && body.cals.length ? body.cals : null, vagaro = !!body.vagaro;
   const d = t => Utilities.formatDate(t, CAL_TZ, 'yyyy-MM-dd'), m = t => +Utilities.formatDate(t, CAL_TZ, 'H') * 60 + +Utilities.formatDate(t, CAL_TZ, 'm');
-  const calendars = [], events = [];
+  const calendars = [], events = []; let partial = false;
   for (const c of CalendarApp.getAllCalendars()) {
-    const id = c.getId(); let hidden = false; try { hidden = c.isHidden(); } catch (e) { }
+    const id = c.getId(), name = c.getName(); let hidden = false; try { hidden = c.isHidden(); } catch (e) { }
     const on = want ? want.indexOf(id) >= 0 : !hidden && !/#holiday@|#contacts@|#weather@|addressbook#/.test(id);
-    calendars.push({ id, name: c.getName(), on });
-    if (!on) continue;
-    for (const ev of c.getEvents(from, to)) {
+    calendars.push({ id, name, on });
+    if (!on || partial) continue;
+    // Vagaro only: Google searches title, description and location itself, so this stays fast; a calendar named Vagaro counts whole.
+    const evs = vagaro && !/vagaro/i.test(name) ? c.getEvents(from, to, { search: 'Vagaro' }) : c.getEvents(from, to);
+    for (const ev of evs) {
+      if (Date.now() - t0 > 25000) { partial = true; break; }
       if (ev.isAllDayEvent()) continue;
-      try { if (ev.getMyStatus() === CalendarApp.GuestStatus.NO) continue; } catch (e) { }
       const s = ev.getStartTime(), e = ev.getEndTime(), date = d(s), start = m(s);
       let end = d(e) === date ? m(e) : 1440; if (end <= start) end = Math.min(1440, start + 30);
-      let who = ''; try { who = ev.getCreators().join(' '); } catch (e) { }
-      const vg = /vagaro/i.test([ev.getTitle(), ev.getDescription(), ev.getLocation(), who, c.getName()].join(' '));
-      events.push({ id: ev.getId() + '|' + date, title: ev.getTitle() || 'Appointment', date, start, end, cal: c.getName(), loc: (ev.getLocation() || '').slice(0, 120), vg });
-      if (events.length >= 1500) break;
+      events.push({ id: ev.getId() + '|' + date, title: ev.getTitle() || 'Appointment', date, start, end, cal: name, vg: vagaro });
+      if (events.length >= 800) { partial = true; break; }
     }
   }
-  return { ok: true, calendars, events, from: d(from), to: d(to) };
+  return { ok: true, calendars, events, from: d(from), to: d(to), partial, vagaro };
 }
