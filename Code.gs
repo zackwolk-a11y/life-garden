@@ -348,7 +348,9 @@ function calendar_(body) {
       try { if (ev.getMyStatus() === CalendarApp.GuestStatus.NO) continue; } catch (e) { }
       const s = ev.getStartTime(), e = ev.getEndTime(), date = d(s), start = m(s);
       let end = d(e) === date ? m(e) : 1440; if (end <= start) end = Math.min(1440, start + 30);
-      events.push({ id: ev.getId() + '|' + date, title: ev.getTitle() || 'Appointment', date, start, end, cal: c.getName(), loc: (ev.getLocation() || '').slice(0, 120) });
+      let who = ''; try { who = ev.getCreators().join(' '); } catch (e) { }
+      const vg = /vagaro/i.test([ev.getTitle(), ev.getDescription(), ev.getLocation(), who, c.getName()].join(' '));
+      events.push({ id: ev.getId() + '|' + date, title: ev.getTitle() || 'Appointment', date, start, end, cal: c.getName(), loc: (ev.getLocation() || '').slice(0, 120), vg });
       if (events.length >= 1500) break;
     }
   }

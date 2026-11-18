@@ -5,6 +5,7 @@
 const GCAL_EVERY = 15 * 60e3;
 const gcal = { busy: false, last: 0, state: '', err: '', cals: null, at: 0 };
 try { const g = JSON.parse(localStorage.getItem('lifegarden.gcal') || 'null'); if (g) { gcal.cals = g.cals; gcal.at = g.at; } } catch (e) { }
+const vagaroOnly = () => S.settings.gcalVagaroOnly !== false;
 const gcalOn = () => !!sync.cfg && S.settings.gcalOn === true;
 const gcalHash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 async function gcalMaybe(force) {
@@ -15,6 +16,8 @@ async function gcalMaybe(force) {
     if (!Array.isArray(o.events)) { gcal.state = 'oldscript'; if (force) toast('The Sheet script needs the calendar update first — see the steps under Google Calendar'); return; }
     gcal.state = 'ok'; gcal.err = ''; gcal.cals = o.calendars || []; gcal.at = Date.now();
     try { localStorage.setItem('lifegarden.gcal', JSON.stringify({ cals: gcal.cals, at: gcal.at })); } catch (e) { }
+    gcal.total = o.events.length; gcal.vg = o.events.filter(e => e.vg).length;
+    if (vagaroOnly()) o.events = o.events.filter(e => e.vg);
     const n = gcalMerge(o);
     if (force) toast(n ? `Calendar: ${n} change${n === 1 ? '' : 's'} brought in` : 'Calendar is up to date');
   } catch (e) {
@@ -48,11 +51,12 @@ function gcalCard() {
   const stateLine = !on ? '' : gcal.state === 'oldscript' ? '<p class="small" style="color:var(--warn)">The Sheet script is the old one — do the 3 steps below.</p>'
     : gcal.state === 'auth' ? '<p class="small" style="color:var(--warn)">Calendar access isn’t allowed yet — do steps 2 and 3 below.</p>'
     : gcal.state === 'error' ? `<p class="small" style="color:var(--warn)">Last try failed: ${esc(gcal.err.slice(0, 140))}</p>`
-    : gcal.at ? `<p class="tiny muted sans">Last checked ${new Date(gcal.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · checks every 15 minutes while the app is open.</p>` : '';
+    : gcal.at ? `<p class="small sans">${gcal.total == null ? '' : vagaroOnly() ? `Found <b>${gcal.vg}</b> Vagaro appointment${gcal.vg === 1 ? '' : 's'} in the next 60 days (skipped ${gcal.total - gcal.vg} other event${gcal.total - gcal.vg === 1 ? '' : 's'}).${!gcal.vg && gcal.total ? ' None of her events mention Vagaro — if Vagaro puts appointments on a calendar of its own, untick this and tick only that calendar below.' : ''}` : `Bringing in all ${gcal.total} events in the next 60 days.`}</p><p class="tiny muted sans">Last checked ${new Date(gcal.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} · checks every 15 minutes while the app is open.</p>` : '';
   const list = on && gcal.cals && gcal.cals.length ? `<div class="stack small sans"><b>Calendars to bring in</b>${gcal.cals.map(c => `<label class="row"><input type="checkbox" data-gcal="${esc(c.id)}" ${(sel ? sel.includes(c.id) : c.on) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</div>` : '';
   return `<div class="card stack"><div class="row between"><h3>Google Calendar</h3>${on && gcal.state === 'ok' ? '<span class="chip good">connected</span>' : ''}</div>
     <p class="small" style="margin:0">Brings appointments from Google Calendar — including ones Vagaro adds — into the plan as fixed blocks, so everything else is planned around them. Read only: nothing is changed on the calendar.</p>
     <label class="row small sans"><input type="checkbox" id="gcalOn" ${on ? 'checked' : ''}> Bring in Google Calendar appointments</label>
+    ${on ? `<label class="row small sans"><input type="checkbox" id="gcalVg" ${vagaroOnly() ? 'checked' : ''}> Only Vagaro appointments (events that mention Vagaro)</label>` : ''}
     ${stateLine}${list}
     ${on ? '<div class="row"><button class="btn" data-act="gcalNow">Check calendar now</button></div>' : ''}
     <details class="disc"${on && gcal.state && gcal.state !== 'ok' ? ' open' : ''}><summary>One-time setup in the Sheet</summary><div class="in stack small">
@@ -63,6 +67,7 @@ function gcalCard() {
 }
 function bindGcal() {
   const t = $('#gcalOn'); if (t) t.onchange = () => { commit('settings', 'calendar setting', st => { st.gcalOn = t.checked; }, { render: false }); if (t.checked) gcalMaybe(true); else render(); };
+  const v = $('#gcalVg'); if (v) v.onchange = () => { commit('settings', 'calendar setting', st => { st.gcalVagaroOnly = v.checked; }, { render: false }); gcal.last = 0; gcalMaybe(true); };
   $$('[data-gcal]').forEach(cb => cb.onchange = () => {
     const ids = $$('[data-gcal]').filter(x => x.checked).map(x => x.dataset.gcal);
     commit('settings', 'calendar list', st => { st.gcalCals = ids; }, { render: false }); gcal.last = 0; gcalMaybe(true);
