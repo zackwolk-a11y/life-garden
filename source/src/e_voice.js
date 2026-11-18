@@ -10,7 +10,9 @@ function audioCtx() {   // one per conversation, created from a tap so iPhone le
 }
 async function startRecording(onLevel, onAutoStop) {
   const ctx = audioCtx(); if (ctx.state === 'suspended') await ctx.resume();
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  // the microphone stays open while the panel is open, so each new turn starts listening instantly
+  if (!voice.stream || !voice.stream.getAudioTracks().some(t => t.readyState === 'live')) voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  const stream = voice.stream;
   const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
   let heard = false, quietSince = 0, lastLoud = 0; const t0 = Date.now();
   proc.onaudioprocess = e => {
@@ -19,18 +21,17 @@ async function startRecording(onLevel, onAutoStop) {
     onLevel && onLevel(rms);
     const now = Date.now();
     if (rms > 0.02) { heard = true; quietSince = 0; lastLoud = chunks.length; } else if (heard && !quietSince) quietSince = now;
-    if ((heard && quietSince && now - quietSince > 1800) || (!heard && now - t0 > 8000) || now - t0 > 30000) onAutoStop && onAutoStop();
+    if ((heard && quietSince && now - quietSince > 1300) || (!heard && now - t0 > 8000) || now - t0 > 30000) onAutoStop && onAutoStop();
   };
   src.connect(proc); proc.connect(ctx.destination);
   return {
     async stop() {
       try { src.disconnect(); proc.disconnect(); } catch (e) { }
-      stream.getTracks().forEach(t => t.stop());
       const rate = ctx.sampleRate;
       const keep = heard ? chunks.slice(0, Math.min(chunks.length, lastLoud + 3)) : chunks;   // drop trailing silence
       return { wav: encodeWav(downsample(keep, rate, 16000), 16000), seconds: keep.length * 4096 / rate, heard };
     },
-    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } stream.getTracks().forEach(t => t.stop()); },
+    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } },
   };
 }
 function downsample(chunks, from, to) {
@@ -202,7 +203,7 @@ function openVoice(autoStart) {
     voiceKey().catch(() => { });
   });
   voice.history = []; voice.convo = true;
-  dlg().addEventListener('close', () => { voice.convo = false; if (voice.rec) { voice.rec.cancel(); voice.rec = null; } stopSpeaking(); try { voice.ctx && voice.ctx.close(); } catch (e) { } voice.ctx = null; }, { once: true });
+  dlg().addEventListener('close', () => { voice.convo = false; if (voice.rec) { voice.rec.cancel(); voice.rec = null; } if (voice.stream) { voice.stream.getTracks().forEach(t => t.stop()); voice.stream = null; } stopSpeaking(); try { voice.ctx && voice.ctx.close(); } catch (e) { } voice.ctx = null; }, { once: true });
 }
 const vStatus = t => { const el = $('#vStatus'); if (el) el.textContent = t; };
 async function beginRecording() {
