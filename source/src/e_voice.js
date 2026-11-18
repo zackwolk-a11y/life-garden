@@ -256,7 +256,8 @@ const VOICE_SCHEMA = {
 };
 const VOICE_RULES = [
   'You are the voice assistant inside Jordan\'s Life Garden, her personal day planner. You help her change her plan by voice.',
-  'Use only the plan context provided. Dates are YYYY-MM-DD, times are 24-hour HH:MM in her local time zone.',
+  'Use only the plan context provided. Dates are YYYY-MM-DD, times are 24-hour HH:MM in her local time zone (that is only the data format).',
+  'In "reply" always say times the normal 12-hour way with AM or PM (for example 2:30 PM, 9 AM), never 24-hour or military time.',
   'Propose only the changes she actually asked for. Never invent ids: to change, move, finish or remove something, use the id of the matching item in the context. If several items could match or a needed detail is missing, ask one short question in reply and return no actions.',
   'New blocks: default length 60 minutes; appointments, classes, shifts and anything with another person at a set time are "fixed"; travel, meals, sleep and couple time are "protected"; everything else is "flexible". Use the title she would write herself, without dates or times in it.',
   'To move a block, use update_block with its id and the new date/start/end, keeping its length unless she says otherwise. "Mark X done" is update_block with done=true. To-dos without a time are add_step (date only if she gave a day).',
@@ -451,6 +452,7 @@ function applyVoice(pick, a) {
   setTimeout(() => { const el = newest && $(`.blk[data-blk="${newest.id}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('preview'); setTimeout(() => el.classList.remove('preview'), 2500); } }, 150);
 }
 function showAgent(a) {
+  a.reply = to12(a.reply);   // normal 12-hour times on screen and out loud
   const plan = planActions(a.actions), ok = plan.filter(p => !p.bad), bad = plan.filter(p => p.bad);
   if (!ok.length && /\b(add(ed)?|mov(e|ed)|scheduled|put|mark(ed)?|remov(e|ed)|delet(e|ed)|logg?ed|set)\b/i.test(a.reply || '') && !/\?\s*$/.test(a.reply || '')) {
     a.reply = 'Sorry — I understood you, but no change came through, so nothing was saved. Please try again and say the day and time.';

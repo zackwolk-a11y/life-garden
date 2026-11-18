@@ -77,6 +77,7 @@ function toGeminiSchema(s) {
   const o = {}; for (const [k, v] of Object.entries(s)) { if (k === 'additionalProperties') continue; o[k] = k === 'type' ? String(v).toUpperCase() : (k === 'properties' ? Object.fromEntries(Object.entries(v).map(([a, b]) => [a, toGeminiSchema(b)])) : toGeminiSchema(v)); }
   return o;
 }
+const deep12 = o => typeof o === 'string' ? to12(o) : Array.isArray(o) ? o.map(deep12) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, deep12(v)])) : o;
 async function aiJSON(system, user, schema, name) {
   if (provider() === 'openai') {
     const key = await openaiKey(); if (!key) return null;
@@ -86,7 +87,7 @@ async function aiJSON(system, user, schema, name) {
       const { r, txt } = await oaFetch(key, 'chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 30000);
       if (r.status === 404 || r.status === 400) continue;
       if (!r.ok) return null;
-      return JSON.parse(JSON.parse(txt).choices[0].message.content);
+      return deep12(JSON.parse(JSON.parse(txt).choices[0].message.content));
     }
     return null;
   }
@@ -96,7 +97,7 @@ async function aiJSON(system, user, schema, name) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
     if (r.status === 404 || r.status === 400) continue;
     if (!r.ok) return null;
-    const j = await r.json(); return JSON.parse(j.candidates[0].content.parts.map(p => p.text || '').join(''));
+    const j = await r.json(); return deep12(JSON.parse(j.candidates[0].content.parts.map(p => p.text || '').join('')));
   }
   return null;
 }

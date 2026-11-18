@@ -71,7 +71,7 @@ function setup() {
     ['The Life Garden app on Jordan\'s phone reads these tabs. Edits here show up in the app the next time it syncs (about a minute, or when the app is reopened).'],
     [''],
     ['Time blocks — one row per scheduled block'],
-    ['date: YYYY-MM-DD (e.g. 2026-11-18).  start / end: 24-hour HH:MM in local time (e.g. 09:00, 16:30; use 24:00 for midnight). A block never crosses midnight — split overnight plans into two rows.'],
+    ['date: YYYY-MM-DD (e.g. 2026-11-18).  start / end: local time like 9:00 AM or 4:30 PM (24-hour 16:30 also works; an end of 12:00 AM means midnight). A block never crosses midnight — split overnight plans into two rows.'],
     ['title: what the activity is.  kind: flexible (can be moved), fixed (appointment), or protected (travel, meals, sleep, together time).'],
     ['status: leave blank for Jordan\'s own plan, or one of: confirmed, proposed, needs confirmation, source-listed, source + proposed. Proposed means a suggestion, not a booking.'],
     ['category (optional): exercise, meals, rest, focus, together, sleep, appointments, travel, routine, other. Blank = automatic from the title.'],

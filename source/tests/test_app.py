@@ -163,6 +163,34 @@ async def main():
             big = await pg.evaluate("snapList().then(a => a.find(o => o.reason.startsWith('Before a large change from the Sheet')))")
             check('a mass deletion in the Sheet leaves a restore point of the earlier plan', big and big['counts']['blocks'] == len(json.loads(base)), str(big and big['reason']))
 
+            # 6b. Normal 12-hour times in the Sheet; old 24-hour rows are converted gradually without a mass re-upload
+            await pg.evaluate("snapList().then(a => a.find(o => o.reason.startsWith('Before a large change'))).then(o => restore(JSON.stringify({ data: JSON.parse(o.data) })))")
+            await pg.wait_for_timeout(600); await pg.evaluate("syncNow()"); await pg.wait_for_timeout(3000)
+            check('restored plan is back in the Sheet', json.loads(mock_call('/inspect'))['Time blocks']['rows'] - 1 == len(json.loads(base)), str(json.loads(mock_call('/inspect'))['Time blocks']['rows']))
+            sample = json.loads(mock_call('/inspect?n=4'))['Time blocks']
+            si = sample['head'].index('start')
+            check('Sheet shows 12-hour times', all(r[si].endswith(('AM', 'PM')) for r in sample['sample']), str([r[si] for r in sample['sample']]))
+            mock_call('/gemini', json.dumps({'tab': 'Time blocks', 'to24': True}))
+            old = json.loads(mock_call('/inspect?n=4'))['Time blocks']['sample'][0][si]
+            fmt_only = await pg.evaluate("""() => { const s = snapshotRows(), b = JSON.parse(JSON.stringify(s)); for (const id in b.t.blocks) { const r = JSON.parse(b.t.blocks[id]); r.start = hhmm(parseTimeLoose(r.start)); r.end = parseTimeLoose(r.end) === 1440 ? '24:00' : hhmm(parseTimeLoose(r.end)); b.t.blocks[id] = JSON.stringify(r); } const o = diffOps(s, b); return o ? Object.keys(o.tables) : null; }""")
+            check('switching formats alone does not re-upload the plan', fmt_only is None, str(fmt_only))
+            await pg.evaluate("localStorage.removeItem('lifegarden.ampmDone'); localStorage.removeItem('lifegarden.ampmQueue'); sync.hash = 'stale'")
+            await pg.evaluate("syncNow()"); await pg.wait_for_timeout(3000)
+            conv = json.loads(mock_call('/inspect?n=200'))['Time blocks']
+            bad = [r[si] for r in conv['sample'] if not r[si].endswith(('AM', 'PM'))]
+            check('old 24-hour Sheet rows are rewritten as 12-hour', old.count(':') == 1 and not old.endswith('M') and not bad, f'before {old}; still 24h: {bad[:5]}')
+            check('converting times did not change any block', await pg.evaluate("S.blocks.length") == conv['rows'] - 1)
+            midnight = await pg.evaluate("MAP.blocks.obj({ id: 'x', date: '2026-11-20', start: '10:00 PM', end: '12:00 AM', title: 'late' })")
+            check('an end of 12:00 AM means midnight', midnight['end'] == 1440, str(midnight['end']))
+            check('spoken/briefing text uses 12-hour times', await pg.evaluate("to12('Tea at 14:30, yoga 9:30 AM')") == 'Tea at 2:30 PM, yoga 9:30 AM')
+
+            disp = await pg.evaluate("""async () => { const b = S.blocks.find(x => x.date === '2026-11-18'); commit('blocks', 't', bl => { bl.find(x => x.id === b.id).title = 'Leave 15:00 for 16:30–21:30 class'; });
+               go('today', '2026-11-18'); await new Promise(r => setTimeout(r, 100)); const shown = document.querySelector(`.blk[data-blk="${b.id}"]`).innerText;
+               openBlockEditor(b.id); await new Promise(r => setTimeout(r, 100)); const box = document.querySelector('#dlgBody input[name=title]').value; closeModal();
+               return { shown, box, saved: JSON.parse(localStorage.getItem(LS_KEY)).blocks.find(x => x.id === b.id).title }; }""")
+            check('24-hour times typed in titles are shown as 12-hour', '3:00 PM' in disp['shown'] and '4:30 PM–9:30 PM' in disp['shown'], disp['shown'])
+            check('…but the saved text and edit box keep exactly what was typed', disp['box'] == disp['saved'] == 'Leave 15:00 for 16:30–21:30 class', str(disp))
+
             # 7. Phone layout: nothing wider than the screen, tab bar present
             over = {}
             for v in ['today', 'week', 'capacity', 'money', 'projects', 'move', 'opps', 'well', 'prep', 'backup']:

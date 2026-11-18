@@ -4,6 +4,20 @@ if (!S.capacity.whatIf) S.capacity.whatIf = {};
 parseHash();
 
 render();
+/* Show 24-hour times written inside saved text (titles, notes from the recovered draft) as normal 12-hour times.
+   Display only: the saved text and the edit boxes keep exactly what was typed. */
+(function show12hTimes() {
+  const SKIP = /^(TEXTAREA|SCRIPT|STYLE|INPUT|SELECT|OPTION|PRE|CODE)$/;
+  const fix = root => {
+    if (root.nodeType === 3) { if (!SKIP.test(root.parentNode && root.parentNode.nodeName)) { const t = to12Typed(root.data); if (t !== root.data) root.data = t; } return; }
+    if (root.nodeType !== 1 || SKIP.test(root.nodeName)) return;
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => SKIP.test(n.parentNode.nodeName) || !/\d:\d\d/.test(n.data) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+    const list = []; while (w.nextNode()) list.push(w.currentNode);
+    for (const n of list) { const t = to12Typed(n.data); if (t !== n.data) n.data = t; }
+  };
+  fix(document.body);
+  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(fix); }).observe(document.body, { childList: true, subtree: true });
+})();
 $('#heroTitle') && $('#heroTitle').addEventListener('click', showStatus);   // tap the title to see the sync status again
 bootSnapshots().catch(e => console.warn('restore points', e));
 (function handleConnectLink() {

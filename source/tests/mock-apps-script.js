@@ -74,6 +74,7 @@ http.createServer((req, res) => {
       if (u.pathname === '/gemini') { // simulate Gemini/people editing the Sheet directly
         const ed = JSON.parse(body), sh = tab(ed.tab), head = sh.d[0];
         if (ed.append) { const r = sh.getLastRow() + 1; ed.append.forEach((row, i) => Object.entries(row).forEach(([k, v]) => sh.set(r + i, head.indexOf(k) + 1, v))); }
+        if (ed.to24) { for (const c of ['start', 'end']) { const ci = head.indexOf(c); for (let i = 1; i < sh.d.length; i++) { const m = String(sh.d[i][ci]).match(/^(\d{1,2}):(\d{2}) (AM|PM)$/); if (m) { let h = +m[1] % 12 + (m[3] === 'PM' ? 12 : 0); if (c === 'end' && h === 0 && +m[2] === 0) h = 24; sh.d[i][ci] = String(h).padStart(2, '0') + ':' + m[2]; } } } }
         if (ed.setWhere) { for (let i = 1; i < sh.d.length; i++) if (sh.d[i][head.indexOf(ed.setWhere.col)] === ed.setWhere.eq) Object.entries(ed.setWhere.set).forEach(([k, v]) => sh.set(i + 1, head.indexOf(k) + 1, v)); }
         global.__mtime = Date.now() + 7;
         if (ed.keepFirst != null) sh.d = sh.d.slice(0, ed.keepFirst + 1);

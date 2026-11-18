@@ -1,6 +1,6 @@
 # Life Garden — UX/UI audit, changes and verification
 
-App version **2026.11.18-a** · audited 17 Nov 2026 · live at https://zackwolk-a11y.github.io/life-garden/
+App version **2026.11.18-d** · audited 17 Nov 2026 · live at https://zackwolk-a11y.github.io/life-garden/
 
 This report covers what was found, what changed, how it was tested, what protects the data, and what is still open. Screenshots with real plan content are kept out of this public repository; they are in the ZIP sent to Quest (`screens/before`, `screens/after`).
 
@@ -48,7 +48,7 @@ Today got slightly taller on phones because the Now/Next/Free card was added abo
 
 ## 3. Testing report
 
-**Automated (in this repository, `tests/test_app.py`)** — runs the real built app in Chromium as a touch phone (375 px, Pacific time zone) against the real `Code.gs` backend inside a Google-services stand-in (`tests/mock-apps-script.js`). Uses synthetic data only. Result on 17 Nov 2026: **24 / 24 passed.**
+**Automated (in this repository, `tests/test_app.py`)** — runs the real built app in Chromium as a touch phone (375 px, Pacific time zone) against the real `Code.gs` backend inside a Google-services stand-in (`tests/mock-apps-script.js`). Uses synthetic data only. Result on 17 Nov 2026: **33 / 33 passed.**
 
 - Upgrade from an older version: every stored record loads unchanged; exactly one "Before app update" restore point is taken, with matching counts, and none on the next open.
 - Done, Keep-it and Move-to-tomorrow are checked **in device storage after a reload**, not by the button click.

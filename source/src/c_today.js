@@ -339,7 +339,7 @@ function openBlockEditor(id, preset = {}) {
     <label class="f">Activity<input name="title" value="${esc(b.title)}" required ${ex ? '' : 'autofocus'}></label>
     <div class="fgrid"><label class="f">Date<input type="date" name="date" value="${b.date}"></label>
       <label class="f">Start<input type="time" name="start" step="300" value="${hhmm(b.start)}"></label>
-      <label class="f">End <span class="tiny">(00:00 = midnight)</span><input type="time" name="end" step="300" value="${b.end === 1440 ? '00:00' : hhmm(b.end)}"></label></div>
+      <label class="f">End <span class="tiny">(12:00 AM = midnight)</span><input type="time" name="end" step="300" value="${b.end === 1440 ? '00:00' : hhmm(b.end)}"></label></div>
     <div class="fgrid"><label class="f">Scheduling kind<select name="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${b.kind === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="f">Activity colour<select name="cat">${catOpts}</select></label>
       <label class="f">Shortest acceptable (min)<input type="number" name="minLen" min="0" step="5" value="${b.minLen ?? ''}" placeholder="for Late start"></label></div>

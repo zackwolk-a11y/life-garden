@@ -399,7 +399,7 @@ button.chip{cursor:pointer;font:inherit;font-family:var(--sans)}
 <div id="toasts" aria-live="polite"></div>
 <script>
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.18-b';
+const APP_VERSION = '2026.11.18-d';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -557,13 +557,23 @@ function parseTimeLoose(v) {
   let h = +m[1], mm = +(m[2] || 0); if (m[3]) { const p = m[3][0] === 'p'; if (p && h < 12) h += 12; if (!p && h === 12) h = 0; }
   return h === 24 && mm === 0 ? 1440 : h > 23 ? null : h * 60 + mm;
 }
-const hm = m => m === 1440 ? '24:00' : hhmm(m);
+const hm = m => m == null ? '' : fmtTime(m);   // Sheet shows normal 12-hour time (2:30 PM); 24-hour typed in the Sheet still works
+/* the same block row in 24-hour and 12-hour form counts as unchanged, so the format switch alone never re-uploads the whole plan */
+const normBlockRow = j => { try { const r = JSON.parse(j); r.start = parseTimeLoose(r.start); const e = parseTimeLoose(r.end); r.end = e === 0 && r.start > 0 ? 1440 : e; return JSON.stringify(r); } catch (x) { return j; } };
+/* 12-hour times for anything shown or spoken: "14:30" → "2:30 PM" (leaves 9:30 AM etc. alone) */
+/* for text people typed: only times that are clearly 24-hour (07:00, 15:30, 22:00) — "9:30" or "11:00" stay as written.
+   A range converts both ends when either end is clearly 24-hour: "07:00–12:30" → "7:00 AM–12:30 PM". */
+const H24 = '(?:0\\d|1[3-9]|2[0-4])';
+const to12Typed = t => String(t || '')
+  .replace(/\b(\d{1,2}):([0-5]\d)(\s*[–—-]\s*)(\d{1,2}):([0-5]\d)\b(?!\s*(?:[ap]\.?m\b|AM|PM))/gi, (x, h1, m1, sep, h2, m2) => new RegExp('^' + H24 + '$').test(h1) || new RegExp('^' + H24 + '$').test(h2) ? fmtTime(+h1 * 60 + +m1) + sep + fmtTime(+h2 * 60 + +m2) : x)
+  .replace(new RegExp('\\b(' + H24 + '):([0-5]\\d)\\b(?!\\s*(?:[ap]\\.?m\\b|AM|PM))', 'gi'), (x, h, m) => fmtTime(+h * 60 + +m));
+const to12 = t => String(t || '').replace(/\b([01]?\d|2[0-4]):([0-5]\d)\b(?!\s*(?:[ap]\.?m\.?|AM|PM))/gi, (x, h, m) => fmtTime(+h * 60 + +m));
 const extraJSON = (o, keys) => { const x = {}; for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '' && !(typeof o[k] === 'object' && !Object.keys(o[k]).length)) x[k] = o[k]; return Object.keys(x).length ? JSON.stringify(x) : ''; };
 const parseExtra = s => { try { return s ? JSON.parse(s) : {}; } catch (e) { return {}; } };
 const MAP = {
   blocks: {
     rows: () => S.blocks.map(b => ({ id: b.id, date: b.date, start: hm(b.start), end: hm(b.end), title: b.title, kind: b.kind, status: b.status ? STATUS_WORDS[b.status] : '', category: b.cat && b.cat !== 'auto' ? b.cat : '', done: yn(b.done), notes: b.notes || '', source: b.src || '', edited: yn(b.edited), extra: extraJSON(b, ['minLen', 'orig', 'sleep', 'taskId', 'icsUid']) })),
-    obj: r => { const date = parseDateLoose(r.date), s = parseTimeLoose(r.start); let e = parseTimeLoose(r.end); if (!date || s == null) return null; if (e == null || e <= s) e = Math.min(1440, s + 60);
+    obj: r => { const date = parseDateLoose(r.date), s = parseTimeLoose(r.start); let e = parseTimeLoose(r.end); if (!date || s == null) return null; if (e === 0 && s > 0) e = 1440; if (e == null || e <= s) e = Math.min(1440, s + 60);
       const kind = /fix|appt|appoint/i.test(r.kind) ? 'fixed' : /prot/i.test(r.kind) ? 'protected' : 'flexible', cat = String(r.category || '').toLowerCase().trim();
       return { ...parseExtra(r.extra), id: r.id, title: r.title || 'Untitled', date, start: s, end: e, kind, cat: CATS[cat] ? cat : 'auto', status: parseStatus(r.status), done: yes(r.done), notes: r.notes || '', src: r.source || undefined, edited: yes(r.edited) || undefined }; },
   },
@@ -610,7 +620,7 @@ function diffOps(cur, base) {
   const ops = { tables: {}, json: {} }; let n = 0;
   for (const k of Object.keys(MAP)) {
     const c = cur.t[k], b = (base && base.t[k]) || {}, up = [], del = [];
-    for (const [id, s] of Object.entries(c)) if (b[id] !== s) up.push(JSON.parse(s));
+    for (const [id, s] of Object.entries(c)) if (b[id] !== s && !(k === 'blocks' && b[id] && normBlockRow(b[id]) === normBlockRow(s))) up.push(JSON.parse(s));
     for (const id of Object.keys(b)) if (!(id in c)) del.push(id);
     if (up.length || del.length) { ops.tables[k] = { upsert: up, del }; n += up.length + del.length; }
   }
@@ -662,6 +672,7 @@ async function syncNow(opts = {}) {
     } else {
       if (!opts.quiet) setStatus('saving', 'Checking for changes…');
       receive(await api('GET', { h: sync.hash }), rev);
+      if (sync.localRev === rev) await reformatSheetTimes(rev);
     }
     sync.lastPull = Date.now();
     setStatus('saved', 'Synced with Google Sheet');
@@ -671,6 +682,16 @@ async function syncNow(opts = {}) {
     setStatus('error', e.name === 'AbortError' ? 'Sheet is slow — will retry' : (e.message || 'Sync failed') + ' · saved on this device');
     clearTimeout(sync.timer); sync.timer = setTimeout(syncNow, 20000);
   } finally { sync.busy = false; if (sync.localRev !== rev && sync.cfg) { clearTimeout(sync.timer); sync.timer = setTimeout(syncNow, 1000); } }
+}
+/* One-time, gradual: rewrite old 24-hour times in the Sheet as 12-hour, 150 rows per sync.
+   Runs only straight after a check that found this device up to date, and sends each row exactly as it is now. */
+async function reformatSheetTimes(rev) {
+  let q; try { q = JSON.parse(localStorage.getItem('lifegarden.ampmQueue') || 'null'); } catch (e) { q = null; }
+  if (q === null) { if (localStorage.getItem('lifegarden.ampmDone')) return; q = S.blocks.map(b => b.id); }
+  if (!q.length) { localStorage.setItem('lifegarden.ampmDone', '1'); localStorage.removeItem('lifegarden.ampmQueue'); return; }
+  const snap = snapshotRows(), batch = q.slice(0, 150), rows = batch.map(id => snap.t.blocks[id]).filter(Boolean).map(j => JSON.parse(j));
+  if (rows.length) receive(await api('POST', { ops: { tables: { blocks: { upsert: rows, del: [] } }, json: {} }, h: sync.hash }), rev, snap);
+  localStorage.setItem('lifegarden.ampmQueue', JSON.stringify(q.slice(150)));
 }
 /* First connection: decide whether the Sheet or this device is the starting point. */
 async function connectSheet(url, key) {
@@ -1217,7 +1238,7 @@ function openBlockEditor(id, preset = {}) {
     <label class="f">Activity<input name="title" value="${esc(b.title)}" required ${ex ? '' : 'autofocus'}></label>
     <div class="fgrid"><label class="f">Date<input type="date" name="date" value="${b.date}"></label>
       <label class="f">Start<input type="time" name="start" step="300" value="${hhmm(b.start)}"></label>
-      <label class="f">End <span class="tiny">(00:00 = midnight)</span><input type="time" name="end" step="300" value="${b.end === 1440 ? '00:00' : hhmm(b.end)}"></label></div>
+      <label class="f">End <span class="tiny">(12:00 AM = midnight)</span><input type="time" name="end" step="300" value="${b.end === 1440 ? '00:00' : hhmm(b.end)}"></label></div>
     <div class="fgrid"><label class="f">Scheduling kind<select name="kind">${Object.entries(KINDS).map(([k, v]) => `<option value="${k}" ${b.kind === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="f">Activity colour<select name="cat">${catOpts}</select></label>
       <label class="f">Shortest acceptable (min)<input type="number" name="minLen" min="0" step="5" value="${b.minLen ?? ''}" placeholder="for Late start"></label></div>
@@ -2414,7 +2435,8 @@ const VOICE_SCHEMA = {
 };
 const VOICE_RULES = [
   'You are the voice assistant inside Jordan\'s Life Garden, her personal day planner. You help her change her plan by voice.',
-  'Use only the plan context provided. Dates are YYYY-MM-DD, times are 24-hour HH:MM in her local time zone.',
+  'Use only the plan context provided. Dates are YYYY-MM-DD, times are 24-hour HH:MM in her local time zone (that is only the data format).',
+  'In "reply" always say times the normal 12-hour way with AM or PM (for example 2:30 PM, 9 AM), never 24-hour or military time.',
   'Propose only the changes she actually asked for. Never invent ids: to change, move, finish or remove something, use the id of the matching item in the context. If several items could match or a needed detail is missing, ask one short question in reply and return no actions.',
   'New blocks: default length 60 minutes; appointments, classes, shifts and anything with another person at a set time are "fixed"; travel, meals, sleep and couple time are "protected"; everything else is "flexible". Use the title she would write herself, without dates or times in it.',
   'To move a block, use update_block with its id and the new date/start/end, keeping its length unless she says otherwise. "Mark X done" is update_block with done=true. To-dos without a time are add_step (date only if she gave a day).',
@@ -2609,6 +2631,7 @@ function applyVoice(pick, a) {
   setTimeout(() => { const el = newest && $(`.blk[data-blk="${newest.id}"]`); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.classList.add('preview'); setTimeout(() => el.classList.remove('preview'), 2500); } }, 150);
 }
 function showAgent(a) {
+  a.reply = to12(a.reply);   // normal 12-hour times on screen and out loud
   const plan = planActions(a.actions), ok = plan.filter(p => !p.bad), bad = plan.filter(p => p.bad);
   if (!ok.length && /\b(add(ed)?|mov(e|ed)|scheduled|put|mark(ed)?|remov(e|ed)|delet(e|ed)|logg?ed|set)\b/i.test(a.reply || '') && !/\?\s*$/.test(a.reply || '')) {
     a.reply = 'Sorry — I understood you, but no change came through, so nothing was saved. Please try again and say the day and time.';
@@ -2743,6 +2766,7 @@ function toGeminiSchema(s) {
   const o = {}; for (const [k, v] of Object.entries(s)) { if (k === 'additionalProperties') continue; o[k] = k === 'type' ? String(v).toUpperCase() : (k === 'properties' ? Object.fromEntries(Object.entries(v).map(([a, b]) => [a, toGeminiSchema(b)])) : toGeminiSchema(v)); }
   return o;
 }
+const deep12 = o => typeof o === 'string' ? to12(o) : Array.isArray(o) ? o.map(deep12) : o && typeof o === 'object' ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, deep12(v)])) : o;
 async function aiJSON(system, user, schema, name) {
   if (provider() === 'openai') {
     const key = await openaiKey(); if (!key) return null;
@@ -2752,7 +2776,7 @@ async function aiJSON(system, user, schema, name) {
       const { r, txt } = await oaFetch(key, 'chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 30000);
       if (r.status === 404 || r.status === 400) continue;
       if (!r.ok) return null;
-      return JSON.parse(JSON.parse(txt).choices[0].message.content);
+      return deep12(JSON.parse(JSON.parse(txt).choices[0].message.content));
     }
     return null;
   }
@@ -2762,7 +2786,7 @@ async function aiJSON(system, user, schema, name) {
     const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key }, body: JSON.stringify(body) });
     if (r.status === 404 || r.status === 400) continue;
     if (!r.ok) return null;
-    const j = await r.json(); return JSON.parse(j.candidates[0].content.parts.map(p => p.text || '').join(''));
+    const j = await r.json(); return deep12(JSON.parse(j.candidates[0].content.parts.map(p => p.text || '').join('')));
   }
   return null;
 }
@@ -2841,6 +2865,20 @@ if (!S.capacity.whatIf) S.capacity.whatIf = {};
 parseHash();
 
 render();
+/* Show 24-hour times written inside saved text (titles, notes from the recovered draft) as normal 12-hour times.
+   Display only: the saved text and the edit boxes keep exactly what was typed. */
+(function show12hTimes() {
+  const SKIP = /^(TEXTAREA|SCRIPT|STYLE|INPUT|SELECT|OPTION|PRE|CODE)$/;
+  const fix = root => {
+    if (root.nodeType === 3) { if (!SKIP.test(root.parentNode && root.parentNode.nodeName)) { const t = to12Typed(root.data); if (t !== root.data) root.data = t; } return; }
+    if (root.nodeType !== 1 || SKIP.test(root.nodeName)) return;
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, { acceptNode: n => SKIP.test(n.parentNode.nodeName) || !/\d:\d\d/.test(n.data) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT });
+    const list = []; while (w.nextNode()) list.push(w.currentNode);
+    for (const n of list) { const t = to12Typed(n.data); if (t !== n.data) n.data = t; }
+  };
+  fix(document.body);
+  new MutationObserver(ms => { for (const m of ms) m.addedNodes.forEach(fix); }).observe(document.body, { childList: true, subtree: true });
+})();
 $('#heroTitle') && $('#heroTitle').addEventListener('click', showStatus);   // tap the title to see the sync status again
 bootSnapshots().catch(e => console.warn('restore points', e));
 (function handleConnectLink() {

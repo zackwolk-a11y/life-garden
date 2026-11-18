@@ -1,5 +1,5 @@
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.18-b';
+const APP_VERSION = '2026.11.18-d';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -157,13 +157,23 @@ function parseTimeLoose(v) {
   let h = +m[1], mm = +(m[2] || 0); if (m[3]) { const p = m[3][0] === 'p'; if (p && h < 12) h += 12; if (!p && h === 12) h = 0; }
   return h === 24 && mm === 0 ? 1440 : h > 23 ? null : h * 60 + mm;
 }
-const hm = m => m === 1440 ? '24:00' : hhmm(m);
+const hm = m => m == null ? '' : fmtTime(m);   // Sheet shows normal 12-hour time (2:30 PM); 24-hour typed in the Sheet still works
+/* the same block row in 24-hour and 12-hour form counts as unchanged, so the format switch alone never re-uploads the whole plan */
+const normBlockRow = j => { try { const r = JSON.parse(j); r.start = parseTimeLoose(r.start); const e = parseTimeLoose(r.end); r.end = e === 0 && r.start > 0 ? 1440 : e; return JSON.stringify(r); } catch (x) { return j; } };
+/* 12-hour times for anything shown or spoken: "14:30" → "2:30 PM" (leaves 9:30 AM etc. alone) */
+/* for text people typed: only times that are clearly 24-hour (07:00, 15:30, 22:00) — "9:30" or "11:00" stay as written.
+   A range converts both ends when either end is clearly 24-hour: "07:00–12:30" → "7:00 AM–12:30 PM". */
+const H24 = '(?:0\\d|1[3-9]|2[0-4])';
+const to12Typed = t => String(t || '')
+  .replace(/\b(\d{1,2}):([0-5]\d)(\s*[–—-]\s*)(\d{1,2}):([0-5]\d)\b(?!\s*(?:[ap]\.?m\b|AM|PM))/gi, (x, h1, m1, sep, h2, m2) => new RegExp('^' + H24 + '$').test(h1) || new RegExp('^' + H24 + '$').test(h2) ? fmtTime(+h1 * 60 + +m1) + sep + fmtTime(+h2 * 60 + +m2) : x)
+  .replace(new RegExp('\\b(' + H24 + '):([0-5]\\d)\\b(?!\\s*(?:[ap]\\.?m\\b|AM|PM))', 'gi'), (x, h, m) => fmtTime(+h * 60 + +m));
+const to12 = t => String(t || '').replace(/\b([01]?\d|2[0-4]):([0-5]\d)\b(?!\s*(?:[ap]\.?m\.?|AM|PM))/gi, (x, h, m) => fmtTime(+h * 60 + +m));
 const extraJSON = (o, keys) => { const x = {}; for (const k of keys) if (o[k] !== undefined && o[k] !== null && o[k] !== '' && !(typeof o[k] === 'object' && !Object.keys(o[k]).length)) x[k] = o[k]; return Object.keys(x).length ? JSON.stringify(x) : ''; };
 const parseExtra = s => { try { return s ? JSON.parse(s) : {}; } catch (e) { return {}; } };
 const MAP = {
   blocks: {
     rows: () => S.blocks.map(b => ({ id: b.id, date: b.date, start: hm(b.start), end: hm(b.end), title: b.title, kind: b.kind, status: b.status ? STATUS_WORDS[b.status] : '', category: b.cat && b.cat !== 'auto' ? b.cat : '', done: yn(b.done), notes: b.notes || '', source: b.src || '', edited: yn(b.edited), extra: extraJSON(b, ['minLen', 'orig', 'sleep', 'taskId', 'icsUid']) })),
-    obj: r => { const date = parseDateLoose(r.date), s = parseTimeLoose(r.start); let e = parseTimeLoose(r.end); if (!date || s == null) return null; if (e == null || e <= s) e = Math.min(1440, s + 60);
+    obj: r => { const date = parseDateLoose(r.date), s = parseTimeLoose(r.start); let e = parseTimeLoose(r.end); if (!date || s == null) return null; if (e === 0 && s > 0) e = 1440; if (e == null || e <= s) e = Math.min(1440, s + 60);
       const kind = /fix|appt|appoint/i.test(r.kind) ? 'fixed' : /prot/i.test(r.kind) ? 'protected' : 'flexible', cat = String(r.category || '').toLowerCase().trim();
       return { ...parseExtra(r.extra), id: r.id, title: r.title || 'Untitled', date, start: s, end: e, kind, cat: CATS[cat] ? cat : 'auto', status: parseStatus(r.status), done: yes(r.done), notes: r.notes || '', src: r.source || undefined, edited: yes(r.edited) || undefined }; },
   },
@@ -210,7 +220,7 @@ function diffOps(cur, base) {
   const ops = { tables: {}, json: {} }; let n = 0;
   for (const k of Object.keys(MAP)) {
     const c = cur.t[k], b = (base && base.t[k]) || {}, up = [], del = [];
-    for (const [id, s] of Object.entries(c)) if (b[id] !== s) up.push(JSON.parse(s));
+    for (const [id, s] of Object.entries(c)) if (b[id] !== s && !(k === 'blocks' && b[id] && normBlockRow(b[id]) === normBlockRow(s))) up.push(JSON.parse(s));
     for (const id of Object.keys(b)) if (!(id in c)) del.push(id);
     if (up.length || del.length) { ops.tables[k] = { upsert: up, del }; n += up.length + del.length; }
   }
@@ -262,6 +272,7 @@ async function syncNow(opts = {}) {
     } else {
       if (!opts.quiet) setStatus('saving', 'Checking for changes…');
       receive(await api('GET', { h: sync.hash }), rev);
+      if (sync.localRev === rev) await reformatSheetTimes(rev);
     }
     sync.lastPull = Date.now();
     setStatus('saved', 'Synced with Google Sheet');
@@ -271,6 +282,16 @@ async function syncNow(opts = {}) {
     setStatus('error', e.name === 'AbortError' ? 'Sheet is slow — will retry' : (e.message || 'Sync failed') + ' · saved on this device');
     clearTimeout(sync.timer); sync.timer = setTimeout(syncNow, 20000);
   } finally { sync.busy = false; if (sync.localRev !== rev && sync.cfg) { clearTimeout(sync.timer); sync.timer = setTimeout(syncNow, 1000); } }
+}
+/* One-time, gradual: rewrite old 24-hour times in the Sheet as 12-hour, 150 rows per sync.
+   Runs only straight after a check that found this device up to date, and sends each row exactly as it is now. */
+async function reformatSheetTimes(rev) {
+  let q; try { q = JSON.parse(localStorage.getItem('lifegarden.ampmQueue') || 'null'); } catch (e) { q = null; }
+  if (q === null) { if (localStorage.getItem('lifegarden.ampmDone')) return; q = S.blocks.map(b => b.id); }
+  if (!q.length) { localStorage.setItem('lifegarden.ampmDone', '1'); localStorage.removeItem('lifegarden.ampmQueue'); return; }
+  const snap = snapshotRows(), batch = q.slice(0, 150), rows = batch.map(id => snap.t.blocks[id]).filter(Boolean).map(j => JSON.parse(j));
+  if (rows.length) receive(await api('POST', { ops: { tables: { blocks: { upsert: rows, del: [] } }, json: {} }, h: sync.hash }), rev, snap);
+  localStorage.setItem('lifegarden.ampmQueue', JSON.stringify(q.slice(150)));
 }
 /* First connection: decide whether the Sheet or this device is the starting point. */
 async function connectSheet(url, key) {
