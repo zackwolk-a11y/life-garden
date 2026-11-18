@@ -422,6 +422,7 @@ VIEWS.backup = () => {
   return syncLine + `<div class="sec-head"><div><h2>Settings & backup</h2><p class="sans small">${sync.cfg ? 'Synced with your Google Sheet — every phone connected to it, and Gemini in Sheets, works on the same plan.' : 'Saving on this device only. Connect a Google Sheet to share the plan between phones and let Gemini edit it.'}</p></div></div>
   <div class="grid2">
     ${sheetCard()}
+    ${gcalCard()}
     ${voiceCard()}
     <div class="card stack"><h3>Look & day</h3><div class="fgrid">
       <label class="f">Theme<select data-b="settings.theme" data-rerender="1"><option value="dark" ${st.theme === 'dark' ? 'selected' : ''}>Dark (warm)</option><option value="light" ${st.theme === 'light' ? 'selected' : ''}>Light</option></select></label>
@@ -453,7 +454,7 @@ VIEWS.backup = () => {
   </div></details>`;
 };
 VIEWS.backup_after = () => {
-  fillSnapList();
+  fillSnapList(); bindGcal();
   $$('[data-pp]').forEach(el => el.onchange = () => commit('settings', 'people', st => { st.people[+el.dataset.pp] = el.value.trim(); st.people = st.people.filter((p, i) => p || i < 2); }));
   const rf = $('#recFile'); if (rf) rf.onchange = async () => {
     const file = rf.files[0]; if (!file) return; let o;

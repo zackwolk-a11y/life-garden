@@ -33,6 +33,7 @@ function onOpen() {
     .addItem('Set voice assistant key…', 'setGeminiKey')
     .addItem('Check voice assistant key', 'checkGeminiKey')
     .addItem('Set ChatGPT (OpenAI) key…', 'setOpenAIKey')
+    .addItem('Connect Google Calendar', 'connectCalendar')
     .addSeparator().addItem('Repair tabs', 'setup')
     .addToUi();
 }
@@ -116,6 +117,7 @@ function doPost(e) {
   let body; try { body = JSON.parse(e.postData.contents); } catch (err) { return out_({ ok: false, error: 'bad json' }); }
   const bad = checkKey_(body.k); if (bad) return out_({ ok: false, error: bad });
   if (body.op === 'agent') return out_(agent_(body));
+  if (body.op === 'calendar') { try { return out_(calendar_(body)); } catch (err) { return out_({ ok: false, error: 'calendar: ' + (err.message || err) }); } }
   if (body.op === 'agentConfig') {   // lets the app call Gemini directly (faster); passcode-protected like everything else
     const props = PropertiesService.getScriptProperties(), key = props.getProperty('GEMINI_API_KEY'), openaiKey = props.getProperty('OPENAI_API_KEY');
     return out_(key || openaiKey ? { ok: true, agentConfig: { key, openaiKey, models: GEMINI_MODELS, rules: AGENT_RULES, schema: AGENT_SCHEMA } } : { ok: false, error: 'nokey' });
@@ -318,4 +320,37 @@ function agent_(body) {
     } catch (e) { return { ok: false, error: 'Gemini answer could not be read' }; }
   }
   return { ok: false, error: last || 'no model available' };
+}
+
+/* ---------------- Google Calendar → Life Garden (read only) ----------------
+   Run  connectCalendar  once from the editor (▶ Run) and allow calendar access, then
+   Deploy → Manage deployments → Edit → Version: New version. Appointments Vagaro puts on her
+   Google Calendar then appear in the app as fixed blocks. Nothing is ever written to the calendar. */
+const CAL_TZ = 'America/Los_Angeles';
+function connectCalendar() {
+  const n = CalendarApp.getAllCalendars().length;
+  try { SpreadsheetApp.getUi().alert('Google Calendar connected — ' + n + ' calendar' + (n === 1 ? '' : 's') + ' found.\n\nLast step: Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy.'); } catch (e) { Logger.log(n + ' calendars found'); }
+}
+function calendar_(body) {
+  const back = Math.min(Math.max(+body.back || 2, 0), 14), days = Math.min(Math.max(+body.days || 60, 7), 120);
+  const from = new Date(); from.setHours(0, 0, 0, 0); from.setDate(from.getDate() - back);
+  const to = new Date(from.getTime() + (back + days) * 864e5);
+  const want = Array.isArray(body.cals) && body.cals.length ? body.cals : null;
+  const d = t => Utilities.formatDate(t, CAL_TZ, 'yyyy-MM-dd'), m = t => +Utilities.formatDate(t, CAL_TZ, 'H') * 60 + +Utilities.formatDate(t, CAL_TZ, 'm');
+  const calendars = [], events = [];
+  for (const c of CalendarApp.getAllCalendars()) {
+    const id = c.getId(); let hidden = false; try { hidden = c.isHidden(); } catch (e) { }
+    const on = want ? want.indexOf(id) >= 0 : !hidden && !/#holiday@|#contacts@|#weather@|addressbook#/.test(id);
+    calendars.push({ id, name: c.getName(), on });
+    if (!on) continue;
+    for (const ev of c.getEvents(from, to)) {
+      if (ev.isAllDayEvent()) continue;
+      try { if (ev.getMyStatus() === CalendarApp.GuestStatus.NO) continue; } catch (e) { }
+      const s = ev.getStartTime(), e = ev.getEndTime(), date = d(s), start = m(s);
+      let end = d(e) === date ? m(e) : 1440; if (end <= start) end = Math.min(1440, start + 30);
+      events.push({ id: ev.getId() + '|' + date, title: ev.getTitle() || 'Appointment', date, start, end, cal: c.getName(), loc: (ev.getLocation() || '').slice(0, 120) });
+      if (events.length >= 1500) break;
+    }
+  }
+  return { ok: true, calendars, events, from: d(from), to: d(to) };
 }

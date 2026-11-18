@@ -1,5 +1,5 @@
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.18-k';
+const APP_VERSION = '2026.11.18-l';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
@@ -276,6 +276,7 @@ async function syncNow(opts = {}) {
     }
     sync.lastPull = Date.now();
     setStatus('saved', 'Synced with Google Sheet');
+    setTimeout(() => gcalMaybe(), 1500);
     if (sync.backupDay !== todayISO()) { sync.backupDay = todayISO(); saveSyncState(); setTimeout(() => api('POST', { ops: {}, backup: { app: 'life-garden', version: 1, exported: new Date().toISOString(), data: S } }).catch(e => { console.warn('daily Drive backup failed', e); sync.backupDay = null; saveSyncState(); }), 4000); }
   } catch (e) {
     console.warn('sync', e);
