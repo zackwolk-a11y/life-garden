@@ -19,7 +19,7 @@ async function startRecording(onLevel, onAutoStop) {
     onLevel && onLevel(rms);
     const now = Date.now();
     if (rms > 0.02) { heard = true; quietSince = 0; lastLoud = chunks.length; } else if (heard && !quietSince) quietSince = now;
-    if ((heard && quietSince && now - quietSince > 800) || (!heard && now - t0 > 8000) || now - t0 > 30000) onAutoStop && onAutoStop();
+    if ((heard && quietSince && now - quietSince > 1800) || (!heard && now - t0 > 8000) || now - t0 > 30000) onAutoStop && onAutoStop();
   };
   src.connect(proc); proc.connect(ctx.destination);
   return {
@@ -211,7 +211,7 @@ async function beginRecording() {
   if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { vStatus('This device can’t record here — type instead (tap the keyboard’s microphone to dictate).'); $('#vText') && $('#vText').focus(); return; }
   try {
     voice.rec = await startRecording(rms => { const l = $('#vLevel'); if (l) l.style.width = Math.min(100, rms * 900) + '%'; }, () => finishRecording());
-    $('#vMic') && $('#vMic').classList.add('on'); $('#vMic') && $('#vMic').setAttribute('aria-label', 'Stop'); vStatus(voice.history && voice.history.length ? 'Listening… (say “that’s all” to finish)' : 'Listening… I’ll stop when you pause.');
+    $('#vMic') && $('#vMic').classList.add('on'); $('#vMic') && $('#vMic').setAttribute('aria-label', 'Stop'); vStatus(handsFree() && voice.history && voice.history.length ? 'Listening… tap the mic when you’re done (or say “that’s all” to finish talking).' : 'Listening… tap the mic when you’re done.');
   } catch (e) {
     voice.rec = null;
     vStatus(e && e.name === 'NotAllowedError' ? 'Microphone access is off. Allow it in iPhone Settings, or type below — the keyboard microphone works too.' : 'Couldn’t start the microphone — type below instead.');
@@ -427,13 +427,14 @@ async function askAgent(input) {
   } finally { voice.busy = false; clearInterval(tick); }
 }
 
-const handsFree = () => S.settings.voiceHandsFree !== false;
+const handsFree = () => S.settings.voiceHandsFree === true;   // off unless turned on: after a reply she taps the mic to say more
 const STOP_WORDS = /^(?:ok(?:ay)?[,. ]*)?(?:that'?s (?:all|it)|thanks?(?: you)?|thank you|no(?:pe)?,? (?:that'?s|thanks)|stop|done|bye|goodbye|never ?mind|i'?m (?:done|good))\b/i;
 async function afterReply(a, canContinue) {
   voice.history = (voice.history || []).concat([{ she_said: a.heard || '', you_replied: a.reply || '' }]).slice(-3);
   const ending = STOP_WORDS.test((a.heard || '').trim());
   await speak(ending ? (a.reply && a.reply.length < 60 ? a.reply : 'Okay — talk soon.') : a.reply);
   if (ending) { if (voice.convo) closeModal(); return; }
+  if (!handsFree() && canContinue && voice.convo && dlg().open && !voice.rec && !voice.busy) vStatus('Tap the mic to say more, or close when you’re done.');
   if (handsFree() && canContinue && voice.convo && dlg().open && !voice.rec && !voice.busy) {
     await new Promise(r => setTimeout(r, 250));
     if (voice.convo && dlg().open && !voice.rec) beginRecording();
@@ -488,7 +489,7 @@ function voiceCard() {
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceAuto" ${S.settings.voiceAuto !== false ? 'checked' : ''}> Save voice changes right away (untick to review each one first)</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.voiceCareful" ${S.settings.voiceCareful ? 'checked' : ''}> Use the more careful, slower model</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.briefingOn" ${S.settings.briefingOn !== false ? 'checked' : ''}> Show a daily briefing the first time the app opens each day</label>
-    <label class="row small sans"><input type="checkbox" data-b="settings.voiceHandsFree" ${S.settings.voiceHandsFree !== false ? 'checked' : ''}> Keep listening after each reply — a conversation; say “that's all” or “thanks” to finish</label>
+    <label class="row small sans"><input type="checkbox" data-b="settings.voiceHandsFree" ${S.settings.voiceHandsFree === true ? 'checked' : ''}> Hands-free: keep listening after each reply (say “that's all” to end). Off = tap the mic each time.</label>
     <label class="row small sans"><input type="checkbox" data-b="settings.speakReplies" ${S.settings.speakReplies !== false ? 'checked' : ''}> Read replies aloud</label>
     <div class="row" style="align-items:flex-end">
       <label class="f grow">Voice<select data-b="settings.speakVoice">
