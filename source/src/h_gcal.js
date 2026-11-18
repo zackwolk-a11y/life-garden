@@ -9,8 +9,11 @@ const vagaroOnly = () => S.settings.gcalVagaroOnly !== false;
 const gcalOn = () => !!sync.cfg && S.settings.gcalOn === true;
 const gcalHash = s => { let h = 5381; for (let i = 0; i < s.length; i++) h = (h * 33 ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
 async function gcalMaybe(force) {
-  if (!gcalOn() || gcal.busy) return; if (!force && Date.now() - gcal.last < GCAL_EVERY) return;
+  if (!gcalOn()) { if (force) toast('Tick “Bring in Google Calendar appointments” first'); return; }
+  if (gcal.busy && !(force && Date.now() - gcal.last > 30000)) { if (force) toast('Still checking the calendar — give it a few more seconds'); return; }
+  if (!force && Date.now() - gcal.last < GCAL_EVERY) return;
   gcal.busy = true; gcal.last = Date.now();
+  if (force) { toast('Checking the calendar…'); const b = $('[data-act="gcalNow"]'); if (b) { b.disabled = true; b.textContent = 'Checking…'; } }
   try {
     const o = await api('POST', { op: 'calendar', back: 2, days: 60, cals: S.settings.gcalCals || null });
     if (!Array.isArray(o.events)) { gcal.state = 'oldscript'; if (force) toast('The Sheet script needs the calendar update first — see the steps under Google Calendar'); return; }
@@ -24,7 +27,7 @@ async function gcalMaybe(force) {
     const msg = String(e.message || e);
     gcal.state = /authoriz|permission|calendar:/i.test(msg) ? 'auth' : 'error'; gcal.err = msg;
     if (force) toast(gcal.state === 'auth' ? 'Google Calendar isn’t allowed yet — run connectCalendar in the script (steps in Settings)' : 'Couldn’t read the calendar: ' + msg.slice(0, 90));
-  } finally { gcal.busy = false; if (R.view === 'backup' && force) render(); }
+  } finally { gcal.busy = false; if (R.view === 'backup') render(); }
 }
 function gcalMerge(o) {
   const want = new Map(o.events.map(e => ['gcal:' + e.id, e]));
