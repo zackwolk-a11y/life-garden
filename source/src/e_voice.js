@@ -8,19 +8,22 @@ function audioCtx() {   // one per conversation, created from a tap so iPhone le
   if (!voice.ctx || voice.ctx.state === 'closed') { const AC = window.AudioContext || window.webkitAudioContext; voice.ctx = new AC(); }
   return voice.ctx;
 }
-async function startRecording(onLevel, onAutoStop, retried) {
+async function startRecording(onLevel, onAutoStop, retried, onDead) {
   const ctx = audioCtx(); if (ctx.state !== 'running') { try { await ctx.resume(); } catch (e) { } }   // iPhone leaves it 'interrupted' after a reply plays
-  if (ctx.state !== 'running' && !retried) { try { ctx.close(); } catch (e) { } voice.ctx = null; return startRecording(onLevel, onAutoStop, true); }
+  if (ctx.state !== 'running' && !retried) { try { ctx.close(); } catch (e) { } voice.ctx = null; return startRecording(onLevel, onAutoStop, true, onDead); }
   // keep one microphone stream for the whole conversation: asking again makes iPhone show the permission pop-up again.
   // Only re-open it if iPhone ended or muted it.
   const alive = voice.stream && voice.stream.getAudioTracks().some(t => t.readyState === 'live' && !t.muted);
   if (!alive) { if (voice.stream) voice.stream.getTracks().forEach(t => t.stop()); voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
   const stream = voice.stream;
   const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
-  let heard = false, quietSince = 0, lastLoud = 0; const t0 = Date.now();
+  let heard = false, quietSince = 0, lastLoud = 0, lastCb = Date.now(), maxRms = 0; const t0 = Date.now();
+  // watchdog: iPhone sometimes hands back a microphone that delivers nothing (no audio at all, or pure zeros)
+  const dog = setInterval(() => { const now = Date.now(); if (now - t0 > 1800 && (now - lastCb > 1200 || maxRms === 0)) { clearInterval(dog); onDead && onDead(); } }, 400);
   proc.onaudioprocess = e => {
+    lastCb = Date.now();
     const d = e.inputBuffer.getChannelData(0); chunks.push(new Float32Array(d));
-    let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] * d[i]; const rms = Math.sqrt(s / (d.length / 4));
+    let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] * d[i]; const rms = Math.sqrt(s / (d.length / 4)); if (rms > maxRms) maxRms = rms;
     onLevel && onLevel(rms);
     const now = Date.now();
     if (rms > 0.02) { heard = true; quietSince = 0; lastLoud = chunks.length; } else if (heard && !quietSince) quietSince = now;
@@ -29,12 +32,12 @@ async function startRecording(onLevel, onAutoStop, retried) {
   src.connect(proc); proc.connect(ctx.destination);
   return {
     async stop() {
-      try { src.disconnect(); proc.disconnect(); } catch (e) { }
+      clearInterval(dog); try { src.disconnect(); proc.disconnect(); } catch (e) { }
       const rate = ctx.sampleRate;
       const keep = heard ? chunks.slice(0, Math.min(chunks.length, lastLoud + 3)) : chunks;   // drop trailing silence
       return { wav: encodeWav(downsample(keep, rate, 16000), 16000), seconds: keep.length * 4096 / rate, heard };
     },
-    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } },
+    cancel() { clearInterval(dog); try { src.disconnect(); proc.disconnect(); } catch (e) { } },
   };
 }
 function downsample(chunks, from, to) {
@@ -237,12 +240,20 @@ function openVoice(autoStart) {
   dlg().addEventListener('close', () => { voice.convo = false; if (voice.rec) { voice.rec.cancel(); voice.rec = null; } if (voice.stream) { voice.stream.getTracks().forEach(t => t.stop()); voice.stream = null; } stopSpeaking(); try { voice.ctx && voice.ctx.close(); } catch (e) { } voice.ctx = null; }, { once: true });
 }
 const vStatus = t => { const el = $('#vStatus'); if (el) el.textContent = t; };
-async function beginRecording() {
+function resetMic() { if (voice.stream) voice.stream.getTracks().forEach(t => t.stop()); voice.stream = null; try { voice.ctx && voice.ctx.close(); } catch (e) { } voice.ctx = null; }
+function micDead() {   // the microphone gave no sound: rebuild it once on its own, then ask for a tap
+  const r = voice.rec; voice.rec = null; if (r) r.cancel(); resetMic();
+  $('#vMic') && $('#vMic').classList.remove('on');
+  if (!voice.deadRetry) { voice.deadRetry = true; beginRecording(true); }
+  else vStatus('The microphone isn’t picking anything up — tap the mic to try again.');
+}
+async function beginRecording(fromRetry) {
   if (voice.busy) return;
+  if (!fromRetry) { if (voice.deadRetry) resetMic(); voice.deadRetry = false; }   // a fresh tap starts clean after a failed try
   unlockSpeech();
   if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) { vStatus('This device can’t record here — type instead (tap the keyboard’s microphone to dictate).'); $('#vText') && $('#vText').focus(); return; }
   try {
-    voice.rec = await startRecording(rms => { const l = $('#vLevel'); if (l) l.style.width = Math.min(100, rms * 900) + '%'; }, () => finishRecording());
+    voice.rec = await startRecording(rms => { const l = $('#vLevel'); if (l) l.style.width = Math.min(100, rms * 900) + '%'; }, () => finishRecording(), false, micDead);
     $('#vMic') && $('#vMic').classList.add('on'); $('#vMic') && $('#vMic').setAttribute('aria-label', 'Stop'); vStatus(handsFree() && voice.history && voice.history.length ? 'Listening… tap the mic when you’re done (or say “that’s all” to finish talking).' : 'Listening… tap the mic when you’re done.');
   } catch (e) {
     voice.rec = null;
