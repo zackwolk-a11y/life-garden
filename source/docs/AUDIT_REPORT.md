@@ -1,6 +1,6 @@
 # Life Garden — UX/UI audit, changes and verification
 
-App version **2026.11.17-j** · audited 17 Nov 2026 · live at https://zackwolk-a11y.github.io/life-garden/
+App version **2026.11.18-a** · audited 17 Nov 2026 · live at https://zackwolk-a11y.github.io/life-garden/
 
 This report covers what was found, what changed, how it was tested, what protects the data, and what is still open. Screenshots with real plan content are kept out of this public repository; they are in the ZIP sent to Quest (`screens/before`, `screens/after`).
 
@@ -91,7 +91,7 @@ The app is a static site: it runs from any web host (or from the ZIP's `site/` f
 ## 6. Remaining issues and next steps
 
 1. **Real-device check** on Jordan's iPhone (see limitations above).
-2. **Update the Sheet script** if not already done (Settings → Connect a Google Sheet → copy script → paste in Apps Script → Deploy → Manage deployments → New version). Needed for the faster sync and the ChatGPT key menu.
+2. **Update the Sheet script** if not already done (Settings → Google Sheet sync → Update the Sheet script: copy, paste over Code.gs in Apps Script, save, then Deploy → Manage deployments → ✎ → New version). Needed for the faster sync and the ChatGPT key menu.
 3. **Re-add the Home Screen icon** to pick up the new logo (iOS caches icons).
 4. Section-specific redesigns not done this round: Opportunities pipeline view, Well-being trends, Pregnancy-prep timeline, Move checklist by date. These sections now fit phones but keep their existing structure.
 5. "Advice & Research" and "Shared Planning" from the brief don't exist as separate sections in this rebuild (shared planning is "This week together" on Today and in Capacity); the original live site and its saved data were never available to compare against.
