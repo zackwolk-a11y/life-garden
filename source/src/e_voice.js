@@ -11,9 +11,11 @@ function audioCtx() {   // one per conversation, created from a tap so iPhone le
 async function startRecording(onLevel, onAutoStop, retried) {
   const ctx = audioCtx(); if (ctx.state !== 'running') { try { await ctx.resume(); } catch (e) { } }   // iPhone leaves it 'interrupted' after a reply plays
   if (ctx.state !== 'running' && !retried) { try { ctx.close(); } catch (e) { } voice.ctx = null; return startRecording(onLevel, onAutoStop, true); }
-  // a fresh microphone stream every turn: iPhone mutes a stream that stayed open while a reply was playing
-  if (voice.stream) { voice.stream.getTracks().forEach(t => t.stop()); voice.stream = null; }
-  const stream = voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+  // keep one microphone stream for the whole conversation: asking again makes iPhone show the permission pop-up again.
+  // Only re-open it if iPhone ended or muted it.
+  const alive = voice.stream && voice.stream.getAudioTracks().some(t => t.readyState === 'live' && !t.muted);
+  if (!alive) { if (voice.stream) voice.stream.getTracks().forEach(t => t.stop()); voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); }
+  const stream = voice.stream;
   const src = ctx.createMediaStreamSource(stream), proc = ctx.createScriptProcessor(4096, 1, 1), chunks = [];
   let heard = false, quietSince = 0, lastLoud = 0; const t0 = Date.now();
   proc.onaudioprocess = e => {
@@ -28,12 +30,11 @@ async function startRecording(onLevel, onAutoStop, retried) {
   return {
     async stop() {
       try { src.disconnect(); proc.disconnect(); } catch (e) { }
-      stream.getTracks().forEach(t => t.stop()); if (voice.stream === stream) voice.stream = null;
       const rate = ctx.sampleRate;
       const keep = heard ? chunks.slice(0, Math.min(chunks.length, lastLoud + 3)) : chunks;   // drop trailing silence
       return { wav: encodeWav(downsample(keep, rate, 16000), 16000), seconds: keep.length * 4096 / rate, heard };
     },
-    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } stream.getTracks().forEach(t => t.stop()); if (voice.stream === stream) voice.stream = null; },
+    cancel() { try { src.disconnect(); proc.disconnect(); } catch (e) { } },
   };
 }
 function downsample(chunks, from, to) {

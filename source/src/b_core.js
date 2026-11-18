@@ -1,5 +1,5 @@
 /* ================= Life Garden — core ================= */
-const APP_VERSION = '2026.11.18-h';
+const APP_VERSION = '2026.11.18-i';
 const TZ = 'America/Los_Angeles';
 const LS_KEY = 'lifegarden.v1';
 const DEVICE = Math.random().toString(36).slice(2, 10);
