@@ -479,7 +479,7 @@ function pendingPasscode() { let k = null; try { k = localStorage.getItem('lifeg
 const scriptWithKey = k => scriptText.replace("const PASSCODE = 'CHANGE-ME-to-a-private-phrase';", `const PASSCODE = '${k.replace(/'/g, '')}';`);
 function sheetCard() {
   const c = sync.cfg;
-  if (!scriptText) fetch('Code.gs').then(r => r.ok ? r.text() : '').then(t => { scriptText = t; }).catch(() => { });
+  if (!scriptText) fetch('Code.gs?v=' + APP_VERSION, { cache: 'no-store' }).then(r => r.ok ? r.text() : '').then(t => { scriptText = t; }).catch(() => { });
   if (c) return `<div class="card stack" style="grid-column:1/-1"><div class="row between"><h3>Google Sheet sync</h3><span class="chip good">connected</span></div>
     <p class="small" style="margin:0">Changes sync about a minute after you make them, and whenever the app opens. Edits made in the Sheet — by you or Gemini — appear here the same way. A dated backup is saved daily to the “Life Garden backups” folder in Drive.</p>
     <div class="row">${c.sheetUrl ? `<a class="btn" href="${esc(c.sheetUrl)}" target="_blank" rel="noopener">Open the Sheet ↗</a>` : ''}<button class="btn primary" data-act="syncNow">Sync now</button><button class="btn" data-act="copySetupLink">Copy setup link for another phone</button><button class="btn ghost danger" data-act="disconnect">Disconnect this device</button></div>
